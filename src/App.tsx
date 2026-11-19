@@ -3,7 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 
-// Auth & Public Pages
+// Marketing & Auth Pages
+import { HomePage } from '@/pages/HomePage'
+import { NotFoundPage } from '@/pages/NotFoundPage'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { SignupPage } from '@/pages/auth/SignupPage'
 import { OnboardingPage } from '@/pages/auth/OnboardingPage'
@@ -29,7 +31,10 @@ export const App: React.FC = () => {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public Routes */}
+        {/* Public Marketing Landing Page */}
+        <Route path="/" element={<HomePage />} />
+
+        {/* Public Auth & Careers Routes */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/onboarding" element={<OnboardingPage />} />
@@ -61,9 +66,8 @@ export const App: React.FC = () => {
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 
-        {/* Root Redirect */}
-        <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
-        <Route path="*" element={<Navigate to="/app/dashboard" replace />} />
+        {/* 404 Catch-All */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   )

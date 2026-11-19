@@ -1,0 +1,20 @@
+# Manoj Soni
+Bhopal, India | manoj.soni@gmail.com | +91 98500 50123
+
+## Summary
+Experienced engineering professional with strong track record of designing, building, and delivering mission-critical applications.
+
+## Technical Skills
+- Core Technologies: Go, Microservices, Docker, PostgreSQL
+- Tools: Docker, Git, Linux, RESTful Web Services
+
+## Experience (5.2 Years)
+Software Engineer at Tech Org (2019 - Present)
+Working on Go and related cloud microservices.
+
+## Education
+- **B.Tech CSE**, MANIT Bhopal
+  - Graduation Year: 2019
+  - Cumulative Score: 8.1 / 10
+- **Senior Secondary (Class XII)**: 84% (Higher Secondary)
+- **Secondary Examination (Class X)**: 86% (State / Central Board)

@@ -1,0 +1,17 @@
+RESUME CURRICULUM VITAE
+candidate name:  Sunil Nair
+contact info: sunil.nair.dev@rediffmail.com   tel:+91-9447012399
+residential town: Kochi
+
+EDUCATIONAL BACKGROUND:
+college/univ: Cochin University of Science and Technology
+course: B.Tech Computer Science  graduating in 2021
+marks details: 7.8 CGPA out of 10
+10th: 82% (Kerala Board)
+12th: 80% (Kerala Board)
+
+SKILLS AND TOOLS:
+python , fastapi , postgresql , docker , git
+
+WORK HISTORY:
+backend developer at technopark trivandrum june 2021 - ongoing

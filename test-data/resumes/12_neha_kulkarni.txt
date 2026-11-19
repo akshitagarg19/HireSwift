@@ -1,0 +1,20 @@
+Name: Neha Kulkarni
+Email: neha.kulkarni@webstudio.co
+Mobile: +91 97660 88223
+Address: Noida, India
+
+ACADEMIC RECORD:
++------------------------------------+--------------------------------+-------------------+------------+
+| Degree / Standard                  | Institution / Board            | Score / Grade     | Year       |
++------------------------------------+--------------------------------+-------------------+------------+
+| B.E. Computer Science              | BITS Pilani (Goa Campus)       | 8.5 / 10          | 2019       |
+| Senior Secondary (Class XII)       | 88% (ISC)                      | Pass with Honours | 2017       |
+| Secondary School (Class X)         | 90% (ICSE)                     | Distinction       | 2015       |
++------------------------------------+--------------------------------+-------------------+------------+
+
+TECHNICAL PROFICIENCIES:
+React, TypeScript, Next.js, Tailwind CSS, Redux, Web Performance, Radix UI, Jest, Vite
+
+WORK EXPERIENCE:
+Lead Frontend Engineer at Urban Company (2021 - Present)
+Built booking flow used by 5M+ monthly users with React, TypeScript, and Vite.

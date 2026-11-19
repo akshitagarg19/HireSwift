@@ -1,0 +1,20 @@
+Name: Bhavna Das
+Email: bhavna.das@gmail.com
+Mobile: +91 98370 37123
+Address: Bhubaneswar, India
+
+ACADEMIC RECORD:
++------------------------------------+--------------------------------+-------------------+------------+
+| Degree / Standard                  | Institution / Board            | Score / Grade     | Year       |
++------------------------------------+--------------------------------+-------------------+------------+
+| B.Tech CSE                         | NIT Rourkela                   | 8.8 / 10          | 2024       |
+| Senior Secondary (Class XII)       | 91% (Higher Secondary)         | Pass with Honours | 2022       |
+| Secondary School (Class X)         | 93% (State / Central Board)    | Distinction       | 2020       |
++------------------------------------+--------------------------------+-------------------+------------+
+
+TECHNICAL PROFICIENCIES:
+C++, Python, SQL, Git
+
+WORK EXPERIENCE:
+Software Engineer at Tech Org (2024 - Present)
+Working on C++ and related cloud microservices.

@@ -1,0 +1,20 @@
+Name: Gautam Reddy
+Email: gautam.reddy@gmail.com
+Mobile: +91 98250 25123
+Address: Hyderabad, India
+
+ACADEMIC RECORD:
++------------------------------------+--------------------------------+-------------------+------------+
+| Degree / Standard                  | Institution / Board            | Score / Grade     | Year       |
++------------------------------------+--------------------------------+-------------------+------------+
+| B.Tech CSE                         | NIT Warangal                   | 8.4 / 10          | 2020       |
+| Senior Secondary (Class XII)       | 87% (Higher Secondary)         | Pass with Honours | 2018       |
+| Secondary School (Class X)         | 89% (State / Central Board)    | Distinction       | 2016       |
++------------------------------------+--------------------------------+-------------------+------------+
+
+TECHNICAL PROFICIENCIES:
+Go, Java, Microservices, Kafka, PostgreSQL, Docker
+
+WORK EXPERIENCE:
+Software Engineer at Tech Org (2020 - Present)
+Working on Go and related cloud microservices.

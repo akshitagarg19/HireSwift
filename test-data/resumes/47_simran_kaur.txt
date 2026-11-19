@@ -1,0 +1,20 @@
+# Simran Kaur
+Amritsar, India | simran.kaur@gmail.com | +91 98470 47123
+
+## Summary
+Experienced engineering professional with strong track record of designing, building, and delivering mission-critical applications.
+
+## Technical Skills
+- Core Technologies: Java, SQL, HTML, CSS
+- Tools: Docker, Git, Linux, RESTful Web Services
+
+## Experience (0 Years)
+Software Engineer at Tech Org (2024 - Present)
+Working on Java and related cloud microservices.
+
+## Education
+- **B.Tech CSE**, GNDU Amritsar
+  - Graduation Year: 2024
+  - Cumulative Score: 8.0 / 10
+- **Senior Secondary (Class XII)**: 83% (Higher Secondary)
+- **Secondary Examination (Class X)**: 85% (State / Central Board)

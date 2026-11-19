@@ -1,0 +1,20 @@
+Name: Anand Kulkarni
+Email: anand.k@gmail.com
+Mobile: +91 98340 34123
+Address: Pune, India
+
+ACADEMIC RECORD:
++------------------------------------+--------------------------------+-------------------+------------+
+| Degree / Standard                  | Institution / Board            | Score / Grade     | Year       |
++------------------------------------+--------------------------------+-------------------+------------+
+| B.E. Computer Engineering          | PICT Pune                      | 8.3 / 10          | 2022       |
+| Senior Secondary (Class XII)       | 87% (Higher Secondary)         | Pass with Honours | 2020       |
+| Secondary School (Class X)         | 88% (State / Central Board)    | Distinction       | 2018       |
++------------------------------------+--------------------------------+-------------------+------------+
+
+TECHNICAL PROFICIENCIES:
+Python, FastAPI, Pandas, SQL
+
+WORK EXPERIENCE:
+Software Engineer at Tech Org (2022 - Present)
+Working on Python and related cloud microservices.

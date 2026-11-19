@@ -1,0 +1,20 @@
+# Shreya Saxena
+Noida, India | shreya.saxena@gmail.com | +91 98350 35123
+
+## Summary
+Experienced engineering professional with strong track record of designing, building, and delivering mission-critical applications.
+
+## Technical Skills
+- Core Technologies: React, JavaScript, HTML, CSS
+- Tools: Docker, Git, Linux, RESTful Web Services
+
+## Experience (1.2 Years)
+Software Engineer at Tech Org (2023 - Present)
+Working on React and related cloud microservices.
+
+## Education
+- **B.Tech CSE**, Amity University
+  - Graduation Year: 2023
+  - Cumulative Score: 7.8 / 10
+- **Senior Secondary (Class XII)**: 80% (Higher Secondary)
+- **Secondary Examination (Class X)**: 82% (State / Central Board)

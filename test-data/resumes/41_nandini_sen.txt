@@ -1,0 +1,20 @@
+# Nandini Sen
+Kolkata, India | nandini.sen@gmail.com | +91 98410 41123
+
+## Summary
+Experienced engineering professional with strong track record of designing, building, and delivering mission-critical applications.
+
+## Technical Skills
+- Core Technologies: React, TypeScript, Tailwind CSS
+- Tools: Docker, Git, Linux, RESTful Web Services
+
+## Experience (1.0 Years)
+Software Engineer at Tech Org (2023 - Present)
+Working on React and related cloud microservices.
+
+## Education
+- **B.Sc Computer Science**, St. Xavier's College
+  - Graduation Year: 2023
+  - Cumulative Score: 8.5 / 10
+- **Senior Secondary (Class XII)**: 88% (Higher Secondary)
+- **Secondary Examination (Class X)**: 90% (State / Central Board)

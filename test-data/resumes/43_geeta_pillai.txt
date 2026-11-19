@@ -1,0 +1,20 @@
+Name: Geeta Pillai
+Email: geeta.pillai@gmail.com
+Mobile: +91 98430 43123
+Address: Trivandrum, India
+
+ACADEMIC RECORD:
++------------------------------------+--------------------------------+-------------------+------------+
+| Degree / Standard                  | Institution / Board            | Score / Grade     | Year       |
++------------------------------------+--------------------------------+-------------------+------------+
+| B.Tech CSE                         | College of Engineering Trivandrum | 8.4 / 10          | 2021       |
+| Senior Secondary (Class XII)       | 87% (Higher Secondary)         | Pass with Honours | 2019       |
+| Secondary School (Class X)         | 89% (State / Central Board)    | Distinction       | 2017       |
++------------------------------------+--------------------------------+-------------------+------------+
+
+TECHNICAL PROFICIENCIES:
+React, TypeScript, Node.js, PostgreSQL
+
+WORK EXPERIENCE:
+Software Engineer at Tech Org (2021 - Present)
+Working on React and related cloud microservices.

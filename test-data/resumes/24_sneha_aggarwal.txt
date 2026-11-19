@@ -1,0 +1,19 @@
+================================================================================
+                                SNEHA AGGARWAL
+                    Email: sneha.aggarwal@hotmail.com | Phone: +91 98240 24123
+                    Location: Delhi, India
+================================================================================
+[SKILLS & COMPETENCIES]                 | [PROFESSIONAL EXPERIENCE]
+----------------------------------------|---------------------------------------
+Technical Skills:                       | Total Experience: 3.0 Years
+React, TypeScript, Next.js, Tailwind CSS, Redux                        | 
+                                        | Software Engineer at Tech Org (2021 - Present)
+Working on React and related cloud microservices.
+Tools & Infrastructure:                 |
+Docker, Git, CI/CD, Linux               | [EDUCATION & ACADEMICS]
+                                        | College: IGDTUW Delhi
+Languages: English, Hindi               | Degree: B.Tech IT (Batch of 2021)
+                                        | CGPA: 8.9 / 10
+                                        | Class X: 93% (State / Central Board)
+                                        | Class XII: 92% (Higher Secondary)
+================================================================================

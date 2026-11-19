@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { toast } from 'sonner'
-import { Search, Briefcase, ArrowRight } from 'lucide-react'
+import { Search, Briefcase, ArrowRight, Mail } from 'lucide-react'
 import { Candidate, Application } from '@/types'
 
 // EXACTLY 5 PIPELINE COLUMNS PER PLAN
@@ -141,6 +141,7 @@ interface KanbanColumnProps {
 }
 
 const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, applications, onCardClick, onMoveTo }) => {
+  const navigate = useNavigate()
   const { setNodeRef, isOver } = useDroppable({
     id: stage.id,
   })
@@ -158,9 +159,23 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, applications, onCard
           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: stage.color }} />
           <h3 className="text-xs font-bold text-text uppercase tracking-wider">{stage.name}</h3>
         </div>
-        <Badge variant="secondary" size="sm">
-          {applications.length}
-        </Badge>
+        <div className="flex items-center gap-1.5">
+          {stage.id === 'shortlisted' && applications.length > 0 && (
+            <button
+              type="button"
+              title="Send bulk email to shortlisted candidates"
+              onClick={() =>
+                navigate(`/app/emails?recipientIds=${applications.map((a) => a.candidate.id).join(',')}`)
+              }
+              className="p-1 px-1.5 rounded text-primary hover:bg-primary/10 text-[10px] font-semibold flex items-center gap-1 border border-primary/20 transition-colors"
+            >
+              <Mail className="w-3 h-3" /> Email
+            </button>
+          )}
+          <Badge variant="secondary" size="sm">
+            {applications.length}
+          </Badge>
+        </div>
       </div>
 
       {/* Column Cards */}

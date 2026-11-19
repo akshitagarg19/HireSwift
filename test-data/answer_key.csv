@@ -1,7 +1,21 @@
 candidate_id,candidate_name,job_target,expected_rank,expected_score_range,why
-cand-aditi-001,Aditi Sharma,Full Stack Engineer,1,92-96%,Perfect match for all required skills (React TypeScript Node.js PostgreSQL Docker) plus 3y exp and Tier-1 IIT Delhi degree
-cand-priya-002,Priya Patel,Full Stack Engineer,2,78-84%,Strong React and TypeScript frontend skills with 2y exp; missing backend Docker and Node.js depth
-cand-vikram-003,Vikram Singh,Full Stack Engineer,3,68-74%,Excellent Docker and AWS containerization background with 3.5y exp; lacks core React frontend skills
-cand-rohan-004,Rohan Verma,Python Data Engineer,1,94-98%,Matches all core skills (Python FastAPI SQL Docker Spark) with 4y relevant data experience and Tier-1 BITS degree
-cand-ananya-005,Ananya Iyer,Campus Graduate Trainee,1,94-98%,Top tier 9.35 CGPA from IIT Bombay with 96%+ in 10th and 12th; strong C++ and algorithms proficiency
-cand-rahul-006,Rahul Nair,Campus Graduate Trainee,2,84-90%,High 8.7 CGPA from VIT with good Java and SQL foundations; solid candidate meeting all academic thresholds
+01_aditi_sharma,Aditi Sharma,Senior Full Stack Engineer,1,94-98%,Matches 5/5 required skills (React TypeScript Node.js PostgreSQL Docker) + 3.2y exp + IIT Delhi degree
+18_karthik_sundaram,Karthik Sundaram,Senior Full Stack Engineer,2,92-96%,Matches 5/5 required skills + 4.5y exp + Tier-1 IIT Madras + 3.85 GPA
+02_priya_patel,Priya Patel,Senior Full Stack Engineer,3,78-84%,Matches React & TypeScript with 2.1y exp; missing backend Docker and Node.js depth
+03_vikram_singh,Vikram Singh,Senior Full Stack Engineer,4,72-76%,Strong Docker and Node.js with 3.8y exp from DTU; lacks primary React frontend competency
+13_deepak_joshi,Deepak Joshi,Senior Full Stack Engineer,5,66-72%,Solid React & TypeScript foundation with 4y exp; missing containerization (Docker) and PostgreSQL
+05_ananya_iyer,Ananya Iyer,Campus Graduate Trainee,1,95-99%,"Top tier 9.35 CGPA from IIT Bombay, 96%+ 10th/12th, exceptional C++ and algorithms proficiency"
+14_divya_narasimhan,Divya Narasimhan,Campus Graduate Trainee,2,92-96%,"9.12 CGPA from NIT Trichy, 97% board distinction, strong C++ and Linux fundamentals"
+06_rahul_nair,Rahul Nair,Campus Graduate Trainee,3,84-88%,"8.7 CGPA from VIT with good Java and SQL foundations, meets all academic cutoffs"
+15_manish_gupta,Manish Gupta,Campus Graduate Trainee,4,82-86%,"8.6 CGPA from DTU Delhi, strong Java and algorithms TA background"
+04_rohan_verma,Rohan Verma,Python Data Engineer,1,95-99%,Matches all core skills (Python FastAPI SQL Spark Docker) with 4y relevant data experience and Tier-1 BITS degree
+16_pooja_sen,Pooja Sen,Python Data Engineer,2,90-95%,"Matches Python, FastAPI, Spark, Docker with 3.2y data streaming background at InMobi"
+17_amitabh_bose,Amitabh Bose,Python Data Engineer,3,78-83%,"Good Python, SQL, PostgreSQL, Docker skills; lacks high-throughput Spark framework"
+22_messy_resume_no_headers,Sunil Nair,Python Data Engineer,4,70-75%,"Matches Python, FastAPI, PostgreSQL, Docker but messy formatting with 2.8y exp"
+07_siddharth_menon,Siddharth Menon,Senior Backend Architect,1,95-99%,"Exceptional match: Go, Java, Kafka, Microservices, Kubernetes with 7y exp and Tier-1 NIT Trichy"
+08_tanvi_deshmukh,Tanvi Deshmukh,Senior Backend Architect,2,94-98%,"Matches Go, Java, Kafka, Kubernetes with 6.2y exp and IIIT Hyderabad dual degree"
+09_arjun_nambiar,Arjun Nambiar,Senior Backend Architect,3,80-85%,"Strong Java, Spring, Microservices, Kafka with 5.5y exp; lacks deep Go language exposure"
+10_kavita_reddy,Kavita Reddy,Senior Backend Architect,4,65-70%,"Java Spring Boot with 4.8y exp; lacks Go, Kafka, and Kubernetes required for architectural role"
+11_varun_kapoor,Varun Kapoor,Staff Frontend Engineer & React Lead,1,95-99%,"Perfect match: React, TypeScript, Next.js, Tailwind, Web Performance with 6y exp and IIT Roorkee"
+12_neha_kulkarni,Neha Kulkarni,Staff Frontend Engineer & React Lead,2,92-96%,"Matches React, TypeScript, Next.js, Tailwind CSS with 5y exp and BITS Pilani degree"
+21_messy_ocr_candidate,Rakesh Kumar Yadav,Senior Full Stack Engineer,6,52-58%,"Below cutoff CGPA (6.84), non-standard OCR format, lacks React/TypeScript frontend required skills"

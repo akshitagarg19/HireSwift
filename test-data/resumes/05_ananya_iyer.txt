@@ -1,0 +1,20 @@
+Name: Ananya Iyer
+Email: ananya.iyer@iitb.ac.in
+Mobile: +91 98450 99887
+Address: Mumbai, India
+
+ACADEMIC RECORD:
++------------------------------------+--------------------------------+-------------------+------------+
+| Degree / Standard                  | Institution / Board            | Score / Grade     | Year       |
++------------------------------------+--------------------------------+-------------------+------------+
+| B.Tech Computer Science and Engineering | IIT Bombay                     | 9.35 / 10.0       | 2024       |
+| Senior Secondary (Class XII)       | 97.2% (ISC Class XII)          | Pass with Honours | 2022       |
+| Secondary School (Class X)         | 96.8% (ICSE Class X)           | Distinction       | 2020       |
++------------------------------------+--------------------------------+-------------------+------------+
+
+TECHNICAL PROFICIENCIES:
+C++, Python, Data Structures, Algorithms, SQL, Git, Linux, Problem Solving
+
+WORK EXPERIENCE:
+Software Engineering Intern at Google (Summer 2023)
+Optimized distributed graph traversal algorithms in C++.

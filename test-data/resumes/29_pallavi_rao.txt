@@ -1,0 +1,20 @@
+# Pallavi Rao
+Bengaluru, India | pallavi.rao@gmail.com | +91 98290 29123
+
+## Summary
+Experienced engineering professional with strong track record of designing, building, and delivering mission-critical applications.
+
+## Technical Skills
+- Core Technologies: React, TypeScript, Tailwind CSS, Node.js
+- Tools: Docker, Git, Linux, RESTful Web Services
+
+## Experience (2.2 Years)
+Software Engineer at Tech Org (2022 - Present)
+Working on React and related cloud microservices.
+
+## Education
+- **B.E. ISE**, BMS College of Engineering
+  - Graduation Year: 2022
+  - Cumulative Score: 8.5 / 10
+- **Senior Secondary (Class XII)**: 88% (Higher Secondary)
+- **Secondary Examination (Class X)**: 89% (State / Central Board)

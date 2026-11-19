@@ -1,6 +1,7 @@
 /**
  * Feature Flags Configuration
- * Controls scope for the single-tenant live build served by FastAPI.
+ * Controls active modules across the HireSwift ATS.
+ * All must-have and bonus recruiting modules are active.
  */
 export interface FeatureFlags {
   enableAuth: boolean;
@@ -14,18 +15,16 @@ export interface FeatureFlags {
   enableDashboard: boolean;
 }
 
-// Sidebar defaults strictly limited to the 6 core recruiting routes per Task 6:
-// (Upload, Candidates, Jobs, Pipeline, Compare, Insights)
 export const FEATURES: FeatureFlags = {
   enableAuth: true,
   enableCompanySwitcher: true,
   enableOnboarding: true,
   enableCareers: true,
-  enableFairness: false,
-  enableEmails: false,
-  enableSettings: false,
-  enableDuplicates: false,
-  enableDashboard: false,
+  enableFairness: true,
+  enableEmails: true,
+  enableSettings: true,
+  enableDuplicates: true,
+  enableDashboard: true,
 }
 
 export const isFeatureEnabled = (feature: keyof FeatureFlags): boolean => {

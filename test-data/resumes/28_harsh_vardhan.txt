@@ -1,0 +1,20 @@
+Name: Harsh Vardhan
+Email: harsh.vardhan@gmail.com
+Mobile: +91 98280 28123
+Address: Patna, India
+
+ACADEMIC RECORD:
++------------------------------------+--------------------------------+-------------------+------------+
+| Degree / Standard                  | Institution / Board            | Score / Grade     | Year       |
++------------------------------------+--------------------------------+-------------------+------------+
+| B.Tech CSE                         | NIT Patna                      | 7.9 / 10          | 2023       |
+| Senior Secondary (Class XII)       | 82% (Higher Secondary)         | Pass with Honours | 2021       |
+| Secondary School (Class X)         | 84% (State / Central Board)    | Distinction       | 2019       |
++------------------------------------+--------------------------------+-------------------+------------+
+
+TECHNICAL PROFICIENCIES:
+Java, Spring Boot, MySQL, Git
+
+WORK EXPERIENCE:
+Software Engineer at Tech Org (2023 - Present)
+Working on Java and related cloud microservices.

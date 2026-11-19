@@ -1,0 +1,19 @@
+================================================================================
+                                AARTI CHAUHAN
+                    Email: aarti.chauhan@gmail.com | Phone: +91 98450 45123
+                    Location: Dehradun, India
+================================================================================
+[SKILLS & COMPETENCIES]                 | [PROFESSIONAL EXPERIENCE]
+----------------------------------------|---------------------------------------
+Technical Skills:                       | Total Experience: 6.0 Years
+React, TypeScript, Next.js, Web Performance                        | 
+                                        | Software Engineer at Tech Org (2018 - Present)
+Working on React and related cloud microservices.
+Tools & Infrastructure:                 |
+Docker, Git, CI/CD, Linux               | [EDUCATION & ACADEMICS]
+                                        | College: IIT Roorkee
+Languages: English, Hindi               | Degree: B.Tech ECE (Batch of 2018)
+                                        | CGPA: 8.5 / 10
+                                        | Class X: 90% (State / Central Board)
+                                        | Class XII: 89% (Higher Secondary)
+================================================================================

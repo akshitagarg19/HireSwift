@@ -1,0 +1,20 @@
+# Sanjay Hegde
+Mangalore, India | sanjay.hegde@gmail.com | +91 98320 32123
+
+## Summary
+Experienced engineering professional with strong track record of designing, building, and delivering mission-critical applications.
+
+## Technical Skills
+- Core Technologies: Go, Docker, Kubernetes, AWS, Linux
+- Tools: Docker, Git, Linux, RESTful Web Services
+
+## Experience (3.5 Years)
+Software Engineer at Tech Org (2020 - Present)
+Working on Go and related cloud microservices.
+
+## Education
+- **B.Tech Mechanical**, NITK Surathkal
+  - Graduation Year: 2020
+  - Cumulative Score: 7.7 / 10
+- **Senior Secondary (Class XII)**: 83% (Higher Secondary)
+- **Secondary Examination (Class X)**: 85% (State / Central Board)

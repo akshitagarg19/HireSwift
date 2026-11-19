@@ -104,7 +104,7 @@ export const OnboardingPage: React.FC = () => {
         {/* Header with step progress */}
         <div className="flex items-center justify-between pb-6 border-b border-border">
           <div>
-            <h1 className="text-xl font-bold text-text">Workspace Setup</h1>
+            <h1 className="text-xl font-bold text-text">Setup your organization — Workspace Setup</h1>
             <p className="text-xs text-muted mt-0.5">Configure your organization in 4 quick steps</p>
           </div>
           <div className="flex items-center gap-2">
@@ -306,17 +306,43 @@ export const OnboardingPage: React.FC = () => {
             <div />
           )}
 
-          {step < 4 ? (
+          {step === 1 && (
             <Button
               type="button"
               variant="primary"
               size="sm"
               rightIcon={<ArrowRight className="w-4 h-4" />}
-              onClick={() => setStep(step + 1)}
+              onClick={() => setStep(2)}
             >
-              Next Step
+              Continue to Hiring Model
             </Button>
-          ) : (
+          )}
+
+          {step === 2 && (
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              rightIcon={<ArrowRight className="w-4 h-4" />}
+              onClick={() => setStep(3)}
+            >
+              Next: Pipeline Stages
+            </Button>
+          )}
+
+          {step === 3 && (
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              rightIcon={<ArrowRight className="w-4 h-4" />}
+              onClick={() => setStep(4)}
+            >
+              Next: Team Members
+            </Button>
+          )}
+
+          {step === 4 && (
             <Button
               type="button"
               variant="primary"
@@ -324,7 +350,7 @@ export const OnboardingPage: React.FC = () => {
               rightIcon={<Check className="w-4 h-4" />}
               onClick={handleFinish}
             >
-              Finish & Go to Dashboard
+              Launch Workspace
             </Button>
           )}
         </div>

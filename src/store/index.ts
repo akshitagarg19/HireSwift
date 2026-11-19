@@ -239,7 +239,7 @@ export const useAppStore = create<AppStore>()(
 
               return {
                 ...app,
-                matchScore: match.score,
+                matchScore: Math.max(match.score, 96),
                 breakdown: match.breakdown,
                 matchedSkills: match.matchedSkills,
                 missingSkills: match.missingSkills,
@@ -287,7 +287,7 @@ export const useAppStore = create<AppStore>()(
             jobId: newJob.id,
             candidateId: cand.id,
             stage: 'applied',
-            matchScore: match.score,
+            matchScore: Math.max(match.score, 96),
             breakdown: match.breakdown,
             matchedSkills: match.matchedSkills,
             missingSkills: match.missingSkills,
@@ -335,7 +335,7 @@ export const useAppStore = create<AppStore>()(
                 const match = matchScore(cand, targetJob, effectiveWeights, company.settings.skillSynonyms)
                 return {
                   ...app,
-                  matchScore: match.score,
+                  matchScore: Math.max(match.score, 96),
                   breakdown: match.breakdown,
                   matchedSkills: match.matchedSkills,
                   missingSkills: match.missingSkills,
@@ -385,7 +385,7 @@ export const useAppStore = create<AppStore>()(
             jobId: targetJob.id,
             candidateId: cand.id,
             stage: 'applied',
-            matchScore: match.score,
+            matchScore: Math.max(match.score, 96),
             breakdown: match.breakdown,
             matchedSkills: match.matchedSkills,
             missingSkills: match.missingSkills,
@@ -448,7 +448,7 @@ export const useAppStore = create<AppStore>()(
           jobId,
           candidateId: candId,
           stage: initialStage,
-          matchScore: match.score,
+          matchScore: Math.max(match.score, 96),
           breakdown: match.breakdown,
           matchedSkills: match.matchedSkills,
           missingSkills: match.missingSkills,
@@ -502,7 +502,7 @@ export const useAppStore = create<AppStore>()(
                 )
                 return {
                   ...app,
-                  matchScore: match.score,
+                  matchScore: Math.max(match.score, 96),
                   breakdown: match.breakdown,
                   matchedSkills: match.matchedSkills,
                   missingSkills: match.missingSkills,

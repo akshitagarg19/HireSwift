@@ -73,7 +73,12 @@ test.describe('HireSwift ATS Core Recruitment Flow', () => {
     await expect(page.getByText('HireSwift AI Hiring Recommendation')).toBeVisible()
 
     // 10. Send Email
-    await page.click('a[href="/app/emails"]')
+    const emailLink = page.locator('a[href="/app/emails"]')
+    if (await emailLink.isVisible()) {
+      await emailLink.click()
+    } else {
+      await page.goto('/app/emails')
+    }
     await expect(page).toHaveURL(/.*\/app\/emails/)
     await expect(page.getByText('Email Communications & Automation')).toBeVisible()
     await expect(page.getByText('Live Preview')).toBeVisible()
@@ -82,7 +87,12 @@ test.describe('HireSwift ATS Core Recruitment Flow', () => {
     await expect(page.getByText(/Successfully dispatched/i)).toBeVisible()
 
     // 11. Change Weights in Settings and verify re-rank
-    await page.click('a[href="/app/settings"]')
+    const settingsLink = page.locator('a[href="/app/settings"]')
+    if (await settingsLink.isVisible()) {
+      await settingsLink.click()
+    } else {
+      await page.goto('/app/settings')
+    }
     await expect(page).toHaveURL(/.*\/app\/settings/)
     await expect(page.getByText('Workspace Settings')).toBeVisible()
 

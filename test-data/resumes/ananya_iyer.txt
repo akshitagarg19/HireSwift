@@ -1,0 +1,24 @@
+ANANYA IYER
+Email: ananya.iyer@example.in | Phone: +91 98765 11003
+Location: Mumbai, India | LinkedIn: linkedin.com/in/ananya-iyer-iitb
+
+SUMMARY
+High-achieving Computer Science Graduate from IIT Bombay (Batch 2024) seeking Campus Graduate Trainee position. Strong algorithmic problem solver with 500+ LeetCode problems solved, proficient in C++, Python, Data Structures, and SQL.
+
+EDUCATION
+B.Tech in Computer Science and Engineering
+Indian Institute of Technology Bombay (IIT Bombay) | Graduated: May 2024 | CGPA: 9.35 / 10.0
+Class 12th (CBSE): 96.8% | Class 10th (CBSE): 97.2%
+
+TECHNICAL SKILLS
+- Languages: C++, Python, SQL, JavaScript
+- Core Fundamentals: Data Structures & Algorithms, Object-Oriented Programming, OS, DBMS, Computer Networks
+- Tools & Libraries: Git, Linux, Docker, NumPy, Pandas, SQLite
+
+PROJECTS & INTERNSHIPS
+Software Engineering Intern | Zomato, Gurugram (May 2023 - July 2023)
+- Implemented delivery route clustering algorithm in Python that improved dispatch efficiency by 14%.
+- Integrated real-time location telemetry with PostgreSQL and Redis.
+
+Distributed Key-Value Store (Academic Capstone, IIT Bombay)
+- Implemented Raft consensus protocol in C++ with replicated state machine and failure recovery.

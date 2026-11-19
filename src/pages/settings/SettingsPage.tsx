@@ -430,7 +430,7 @@ export const SettingsPage: React.FC = () => {
                 </div>
                 <div className="flex gap-1.5">
                   <Button variant="outline" size="sm" onClick={() => handleApplyWeightPreset('fresher')}>
-                    Fresher Preset
+                    Fresher Preset (Campus Fresher Focus)
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => handleApplyWeightPreset('experienced')}>
                     Lateral Preset
@@ -510,7 +510,7 @@ export const SettingsPage: React.FC = () => {
                 </label>
 
                 <Button variant="primary" size="sm" onClick={handleSaveWeights}>
-                  Save & Re-rank All Applications
+                  Save Scoring Configuration & Re-rank All Applications
                 </Button>
               </div>
             </div>

@@ -27,6 +27,7 @@ import { Badge } from '@/components/ui/Badge'
 import { CommandPalette } from '@/components/CommandPalette'
 import { cn } from '@/lib/utils'
 import { Role } from '@/types'
+import { isFeatureEnabled } from '@/config/features'
 
 export const AppShell: React.FC = () => {
   const navigate = useNavigate()
@@ -65,10 +66,7 @@ export const AppShell: React.FC = () => {
   )
 
   const navItems = [
-    { label: 'Dashboard', path: '/app/dashboard', icon: LayoutDashboard },
-    { label: 'Jobs', path: '/app/jobs', icon: Briefcase },
-    { label: 'Candidates', path: '/app/candidates', icon: Users },
-    { label: 'Pipeline', path: '/app/pipeline', icon: Kanban },
+    ...(isFeatureEnabled('enableDashboard') ? [{ label: 'Dashboard', path: '/app/dashboard', icon: LayoutDashboard }] : []),
     {
       label: 'Upload Resumes',
       path: '/app/upload',
@@ -76,18 +74,25 @@ export const AppShell: React.FC = () => {
       badge: lowConfidenceCount > 0 ? `${lowConfidenceCount}` : undefined,
       badgeColor: 'warning' as const,
     },
+    { label: 'Candidates', path: '/app/candidates', icon: Users },
+    { label: 'Jobs', path: '/app/jobs', icon: Briefcase },
+    { label: 'Pipeline', path: '/app/pipeline', icon: Kanban },
     { label: 'Compare', path: '/app/compare', icon: Scale },
     { label: 'Insights', path: '/app/insights', icon: BarChart3 },
-    { label: 'Emails', path: '/app/emails', icon: Mail },
-    {
-      label: 'Duplicates',
-      path: '/app/duplicates',
-      icon: Copy,
-      badge: pendingDuplicates > 0 ? `${pendingDuplicates}` : undefined,
-      badgeColor: 'danger' as const,
-    },
-    { label: 'Fairness', path: '/app/fairness', icon: ShieldCheck },
-    { label: 'Settings', path: '/app/settings', icon: Settings },
+    ...(isFeatureEnabled('enableEmails') ? [{ label: 'Emails', path: '/app/emails', icon: Mail }] : []),
+    ...(isFeatureEnabled('enableDuplicates')
+      ? [
+          {
+            label: 'Duplicates',
+            path: '/app/duplicates',
+            icon: Copy,
+            badge: pendingDuplicates > 0 ? `${pendingDuplicates}` : undefined,
+            badgeColor: 'danger' as const,
+          },
+        ]
+      : []),
+    ...(isFeatureEnabled('enableFairness') ? [{ label: 'Fairness', path: '/app/fairness', icon: ShieldCheck }] : []),
+    ...(isFeatureEnabled('enableSettings') ? [{ label: 'Settings', path: '/app/settings', icon: Settings }] : []),
   ]
 
   // Breadcrumbs calculation
@@ -161,18 +166,20 @@ export const AppShell: React.FC = () => {
 
         {/* Public Careers Link & Active Role */}
         <div className="p-3 border-t border-border space-y-2">
-          <a
-            href={`/careers/${currentCompany.slug}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-between px-3 py-2 text-xs font-medium text-muted hover:text-primary rounded-lg border border-border bg-gray-50/50 hover:bg-indigo-50/40 hover:border-indigo-200 transition-colors"
-          >
-            <span className="flex items-center gap-1.5">
-              <ExternalLink className="w-3.5 h-3.5" />
-              Public Careers Page
-            </span>
-            <span className="text-[10px] text-primary underline">Open</span>
-          </a>
+          {isFeatureEnabled('enableCareers') && (
+            <a
+              href={`/careers/${currentCompany.slug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between px-3 py-2 text-xs font-medium text-muted hover:text-primary rounded-lg border border-border bg-gray-50/50 hover:bg-indigo-50/40 hover:border-indigo-200 transition-colors"
+            >
+              <span className="flex items-center gap-1.5">
+                <ExternalLink className="w-3.5 h-3.5" />
+                Public Careers Page
+              </span>
+              <span className="text-[10px] text-primary underline">Open</span>
+            </a>
+          )}
 
           <div className="px-3 py-2 rounded-lg bg-gray-50 border border-border flex items-center justify-between text-xs text-muted">
             <span className="font-medium">Active Role</span>
@@ -213,66 +220,75 @@ export const AppShell: React.FC = () => {
           {/* Right Actions */}
           <div className="flex items-center gap-3">
             {/* Blind mode indicator */}
-            {currentCompany.settings.blindMode && (
+            {currentCompany.settings?.blindMode && (
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
                 <Eye className="w-3.5 h-3.5 text-amber-600" />
                 <span>Blind Mode On</span>
               </div>
             )}
 
-            {/* Company Switcher */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  setShowCompanyMenu(!showCompanyMenu)
-                  setShowNotifications(false)
-                  setShowUserMenu(false)
-                }}
-                className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-text bg-white border border-border rounded-lg hover:bg-gray-50 transition-colors shadow-xs"
-              >
+            {/* Company Display / Switcher */}
+            {isFeatureEnabled('enableCompanySwitcher') ? (
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowCompanyMenu(!showCompanyMenu)
+                    setShowNotifications(false)
+                    setShowUserMenu(false)
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-text bg-white border border-border rounded-lg hover:bg-gray-50 transition-colors shadow-xs"
+                >
+                  <div className="w-4 h-4 rounded bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">
+                    {currentCompany.name.charAt(0)}
+                  </div>
+                  <span className="truncate max-w-[130px]">{currentCompany.name}</span>
+                  <ChevronDown className="w-3.5 h-3.5 text-muted" />
+                </button>
+
+                {showCompanyMenu && (
+                  <div className="absolute right-0 mt-2 w-64 bg-card rounded-xl border border-border shadow-modal py-1.5 z-50 animate-in fade-in-0 zoom-in-95">
+                    <div className="px-3 py-1.5 text-[11px] font-semibold text-muted uppercase tracking-wider">
+                      Switch Workspace Tenant
+                    </div>
+                    {companies.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          switchCompany(c.id)
+                          setShowCompanyMenu(false)
+                        }}
+                        className={cn(
+                          'w-full flex items-center justify-between px-3 py-2 text-left text-xs transition-colors',
+                          c.id === currentCompanyId
+                            ? 'bg-indigo-50/70 text-primary font-semibold'
+                            : 'text-text hover:bg-gray-50'
+                        )}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-5 h-5 rounded bg-gray-100 flex items-center justify-center font-bold text-xs text-text">
+                            {c.name.charAt(0)}
+                          </div>
+                          <div>
+                            <div>{c.name}</div>
+                            <div className="text-[10px] text-muted">{c.industry || 'ATS Tenant'}</div>
+                          </div>
+                        </div>
+                        {c.id === currentCompanyId && (
+                          <CheckCircle2 className="w-4 h-4 text-primary" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-text bg-white border border-border rounded-lg shadow-xs">
                 <div className="w-4 h-4 rounded bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">
                   {currentCompany.name.charAt(0)}
                 </div>
                 <span className="truncate max-w-[130px]">{currentCompany.name}</span>
-                <ChevronDown className="w-3.5 h-3.5 text-muted" />
-              </button>
-
-              {showCompanyMenu && (
-                <div className="absolute right-0 mt-2 w-64 bg-card rounded-xl border border-border shadow-modal py-1.5 z-50 animate-in fade-in-0 zoom-in-95">
-                  <div className="px-3 py-1.5 text-[11px] font-semibold text-muted uppercase tracking-wider">
-                    Switch Workspace Tenant
-                  </div>
-                  {companies.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => {
-                        switchCompany(c.id)
-                        setShowCompanyMenu(false)
-                      }}
-                      className={cn(
-                        'w-full flex items-center justify-between px-3 py-2 text-left text-xs transition-colors',
-                        c.id === currentCompanyId
-                          ? 'bg-indigo-50/70 text-primary font-semibold'
-                          : 'text-text hover:bg-gray-50'
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 rounded bg-gray-100 flex items-center justify-center font-bold text-xs text-text">
-                          {c.name.charAt(0)}
-                        </div>
-                        <div>
-                          <div>{c.name}</div>
-                          <div className="text-[10px] text-muted">{c.industry || 'ATS Tenant'}</div>
-                        </div>
-                      </div>
-                      {c.id === currentCompanyId && (
-                        <CheckCircle2 className="w-4 h-4 text-primary" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Notifications Bell */}
             <div className="relative">
@@ -338,53 +354,61 @@ export const AppShell: React.FC = () => {
             </div>
 
             {/* User Menu */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  setShowUserMenu(!showUserMenu)
-                  setShowCompanyMenu(false)
-                  setShowNotifications(false)
-                }}
-                className="flex items-center gap-2 p-1 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <Avatar name={currentUser?.name || 'User'} size="sm" />
-                <div className="hidden sm:block text-left text-xs">
-                  <div className="font-semibold text-text">{currentUser?.name || 'User'}</div>
-                  <div className="text-[10px] text-muted">{currentUser?.role}</div>
-                </div>
-                <ChevronDown className="w-3.5 h-3.5 text-muted" />
-              </button>
-
-              {showUserMenu && (
-                <div className="absolute right-0 mt-2 w-52 bg-card rounded-xl border border-border shadow-modal py-1.5 z-50 animate-in fade-in-0 zoom-in-95">
-                  <div className="px-3 py-2 border-b border-border">
-                    <p className="text-xs font-semibold text-text">{currentUser?.name}</p>
-                    <p className="text-[11px] text-muted truncate">{currentUser?.email}</p>
+            {isFeatureEnabled('enableAuth') ? (
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    setShowUserMenu(!showUserMenu)
+                    setShowCompanyMenu(false)
+                    setShowNotifications(false)
+                  }}
+                  className="flex items-center gap-2 p-1 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <Avatar name={currentUser?.name || 'User'} size="sm" />
+                  <div className="hidden sm:block text-left text-xs">
+                    <div className="font-semibold text-text">{currentUser?.name || 'User'}</div>
+                    <div className="text-[10px] text-muted">{currentUser?.role}</div>
                   </div>
-                  <button
-                    onClick={() => {
-                      setShowUserMenu(false)
-                      navigate('/app/settings')
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-text hover:bg-gray-50"
-                  >
-                    <Settings className="w-3.5 h-3.5 text-muted" />
-                    Settings & Profile
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowUserMenu(false)
-                      logout()
-                      navigate('/login')
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-rose-600 hover:bg-rose-50"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    Sign out
-                  </button>
-                </div>
-              )}
-            </div>
+                  <ChevronDown className="w-3.5 h-3.5 text-muted" />
+                </button>
+
+                {showUserMenu && (
+                  <div className="absolute right-0 mt-2 w-52 bg-card rounded-xl border border-border shadow-modal py-1.5 z-50 animate-in fade-in-0 zoom-in-95">
+                    <div className="px-3 py-2 border-b border-border">
+                      <p className="text-xs font-semibold text-text">{currentUser?.name}</p>
+                      <p className="text-[11px] text-muted truncate">{currentUser?.email}</p>
+                    </div>
+                    {isFeatureEnabled('enableSettings') && (
+                      <button
+                        onClick={() => {
+                          setShowUserMenu(false)
+                          navigate('/app/settings')
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-text hover:bg-gray-50"
+                      >
+                        <Settings className="w-3.5 h-3.5 text-muted" />
+                        Settings & Profile
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setShowUserMenu(false)
+                        logout()
+                        navigate('/login')
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-rose-600 hover:bg-rose-50"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 p-1">
+                <Avatar name={currentUser?.name || 'User'} size="sm" />
+              </div>
+            )}
           </div>
         </header>
 

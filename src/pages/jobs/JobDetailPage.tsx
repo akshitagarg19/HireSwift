@@ -1,11 +1,13 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
+import { api } from '@/api'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { ScoreRing } from '@/components/ui/ScoreRing'
 import { Avatar } from '@/components/ui/Avatar'
 import { SkillChip } from '@/components/ui/SkillChip'
+import { Input } from '@/components/ui/Input'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs'
 import { toast } from 'sonner'
 import {
@@ -18,10 +20,21 @@ import {
   Briefcase,
   Users,
   CheckCircle,
-  ExternalLink,
   Save,
   Check,
+  Edit2,
+  Info,
+  X,
 } from 'lucide-react'
+import { JobRankingCandidate, SkillGapItem } from '@/api'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts'
 
 export const JobDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -32,7 +45,6 @@ export const JobDetailPage: React.FC = () => {
     applications,
     companies,
     currentCompanyId,
-    updateCompanySettings,
     rematchTalentPool,
     updateApplicationStage,
     updateJob,
@@ -53,6 +65,27 @@ export const JobDetailPage: React.FC = () => {
   const [isRematching, setIsRematching] = useState(false)
   const [showWeightPanel, setShowWeightPanel] = useState(false)
 
+  // Editable requirements state
+  const [isEditingReqs, setIsEditingReqs] = useState(false)
+  const [editReqSkills, setEditReqSkills] = useState<string[]>(job?.requirements.requiredSkills || [])
+  const [editPrefSkills, setEditPrefSkills] = useState<string[]>(job?.requirements.preferredSkills || [])
+  const [editMinExp, setEditMinExp] = useState(job?.requirements.minExperience || 2)
+  const [editMinCgpa, setEditMinCgpa] = useState(job?.requirements.minCgpa || 7.0)
+  const [editLocation, setEditLocation] = useState(job?.location || 'Bengaluru')
+
+  // Expanded candidate breakdown popover ID
+  const [expandedBreakdownId, setExpandedBreakdownId] = useState<string | null>(null)
+
+  // Live rankings from API
+  const [rankingData, setRankingData] = useState<JobRankingCandidate[]>([])
+  const [skillGapData, setSkillGapData] = useState<SkillGapItem[]>([])
+
+  useEffect(() => {
+    if (!job) return
+    api.getJobRanking(job.id).then((res) => setRankingData(res.candidates))
+    api.getJobSkillGap(job.id).then((res) => setSkillGapData(res.skills))
+  }, [job, applications])
+
   if (!job) {
     return (
       <div className="p-8 text-center bg-white rounded-xl border border-border">
@@ -64,56 +97,72 @@ export const JobDetailPage: React.FC = () => {
     )
   }
 
-  // Applications for this job
-  const jobApplications = applications.filter((a) => a.jobId === job.id)
-  const candidateMap = new Map(candidates.map((c) => [c.id, c]))
-
-  // Ranked candidates: sorted by matchScore descending
-  const rankedList = [...jobApplications]
-    .map((app) => ({
-      app,
-      candidate: candidateMap.get(app.candidateId)!,
-    }))
-    .filter((item) => Boolean(item.candidate))
-    .sort((a, b) => b.app.matchScore - a.app.matchScore)
-
   // Handle slider weight changes (re-ranks candidates for this job only)
   const handleWeightChange = (key: keyof typeof weights, value: number) => {
     const updated = { ...weights, [key]: value }
     setWeights(updated)
-
-    // Save to this specific job and trigger live re-rank for this job only
     updateJob(job.id, {
       scoringWeights: updated,
     })
+    api.getJobRanking(job.id).then((res) => setRankingData(res.candidates))
   }
 
   const handleRematch = () => {
     setIsRematching(true)
     setTimeout(() => {
       rematchTalentPool(job.id)
+      api.getJobRanking(job.id).then((res) => setRankingData(res.candidates))
+      api.getJobSkillGap(job.id).then((res) => setSkillGapData(res.skills))
       setIsRematching(false)
       toast.success('Successfully scored entire talent pool against this job!')
     }, 400)
   }
 
   const handleShortlist = (appId: string, candidateName: string) => {
-    updateApplicationStage(appId, 'shortlisted', 'Directly shortlisted from Job Ranking')
-    toast.success(`Shortlisted ${candidateName}!`)
+    api.moveApplication(appId, 'shortlisted', 'Directly shortlisted from Job Ranking')
+      .then(() => {
+        toast.success(`Shortlisted ${candidateName}!`)
+        api.getJobRanking(job.id).then((res) => setRankingData(res.candidates))
+      })
+      .catch((err) => toast.error(err.message))
   }
 
-  // Calculate skill gap metrics for the Insights tab
-  const totalApplicants = rankedList.length
-  const skillSupplyCount: Record<string, number> = {}
-  job.requirements.requiredSkills.forEach((s) => (skillSupplyCount[s] = 0))
+  const handleSaveRequirements = async () => {
+    try {
+      await api.patchJob(job.id, {
+        location: editLocation,
+        requirements: {
+          ...job.requirements,
+          requiredSkills: editReqSkills,
+          preferredSkills: editPrefSkills,
+          minExperience: editMinExp,
+          minCgpa: editMinCgpa,
+        },
+      })
+      setIsEditingReqs(false)
+      toast.success('Job criteria updated and applicants re-ranked!')
+      api.getJobRanking(job.id).then((res) => setRankingData(res.candidates))
+      api.getJobSkillGap(job.id).then((res) => setSkillGapData(res.skills))
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save job requirements')
+    }
+  }
 
-  rankedList.forEach(({ candidate }) => {
-    candidate.skills.forEach((s) => {
-      if (skillSupplyCount[s] !== undefined) {
-        skillSupplyCount[s]++
-      }
-    })
-  })
+  // Funnel numbers matching the table
+  const totalApplicants = rankingData.length
+  const appliedCount = rankingData.filter((c) => c.stage === 'applied').length
+  const shortlistedCount = rankingData.filter((c) => c.stage === 'shortlisted').length
+  const interviewCount = rankingData.filter((c) => c.stage === 'interview').length
+  const offerCount = rankingData.filter((c) => c.stage === 'offer').length
+  const rejectedCount = rankingData.filter((c) => c.stage === 'rejected').length
+
+  const funnelData = [
+    { name: 'Applied', count: appliedCount, fill: '#2563EB' },
+    { name: 'Shortlisted', count: shortlistedCount, fill: '#7C3AED' },
+    { name: 'Interview', count: interviewCount, fill: '#F59E0B' },
+    { name: 'Offer', count: offerCount, fill: '#16A34A' },
+    { name: 'Rejected', count: rejectedCount, fill: '#DC2626' },
+  ]
 
   return (
     <div className="space-y-6">
@@ -141,65 +190,45 @@ export const JobDetailPage: React.FC = () => {
                 {job.location}
               </span>
               <span>•</span>
-              <span className="flex items-center gap-1">
-                <Users className="w-3.5 h-3.5" />
-                {rankedList.length} Applicants
-              </span>
+              <span>{totalApplicants} Total Applications</span>
             </div>
           </div>
         </div>
 
+        {/* Top actions */}
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
-            leftIcon={<Sliders className="w-4 h-4" />}
+            leftIcon={<Sliders className="w-3.5 h-3.5" />}
             onClick={() => setShowWeightPanel(!showWeightPanel)}
           >
-            {showWeightPanel ? 'Hide Sliders' : 'Scoring Weights'}
+            {showWeightPanel ? 'Hide Weights' : 'Adjust Weights'}
           </Button>
 
           <Button
             variant="secondary"
             size="sm"
-            leftIcon={<RefreshCw className={`w-4 h-4 ${isRematching ? 'animate-spin' : ''}`} />}
+            leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${isRematching ? 'animate-spin' : ''}`} />}
             onClick={handleRematch}
             isLoading={isRematching}
           >
-            Re-match Talent Pool
+            Re-match Pool
           </Button>
         </div>
       </div>
 
-      {/* Slide-down scoring weights adjustment banner */}
+      {/* Expandable Scoring Weight Sliders for this specific job */}
       {showWeightPanel && (
-        <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-5 shadow-soft animate-in fade-in-0 duration-200">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-sm font-bold text-text flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-primary" />
-                Live Scoring Sliders (Affects All Rankings Instantly)
-              </h3>
-              <p className="text-xs text-muted">
-                Adjust the importance of skills, experience, education, and semantic similarity. Total: {weights.skills + weights.experience + weights.education + weights.semantic}%
-              </p>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setWeights({ skills: 45, experience: 30, education: 10, semantic: 15 })
-                updateCompanySettings(company.id, {
-                  scoringWeights: { skills: 45, experience: 30, education: 10, semantic: 15 },
-                })
-                toast.success('Reset to standard weights')
-              }}
-            >
-              Reset to Preset
-            </Button>
+        <div className="bg-indigo-50/60 rounded-xl border border-indigo-200 p-4 space-y-3 animate-in fade-in-0 duration-200">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-primary" />
+              Job-Specific Scoring Weights (Re-ranks this job only)
+            </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div className="bg-white p-3 rounded-lg border border-border">
               <div className="flex justify-between text-xs font-semibold mb-1">
                 <span>Skills Fit</span>
@@ -266,178 +295,389 @@ export const JobDetailPage: React.FC = () => {
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="bg-white border border-border p-1">
-          <TabsTrigger value="ranked">Ranked Candidates ({rankedList.length})</TabsTrigger>
+          <TabsTrigger value="ranked">Ranked Candidates ({rankingData.length})</TabsTrigger>
           <TabsTrigger value="requirements">Requirements & JD</TabsTrigger>
-          <TabsTrigger value="insights">Skill Gap Insights</TabsTrigger>
+          <TabsTrigger value="insights">Skill Gap & Funnel Insights</TabsTrigger>
         </TabsList>
 
-        {/* TAB 1: Ranked Candidates */}
+        {/* TAB 1: Ranked Candidates from GET /jobs/{id}/ranking */}
         <TabsContent value="ranked" className="space-y-3 mt-4">
-          {rankedList.length === 0 ? (
+          {rankingData.length === 0 ? (
             <div className="p-12 text-center bg-white rounded-xl border border-dashed border-border">
               <Users className="w-10 h-10 text-muted mx-auto mb-2" />
-              <h3 className="text-base font-semibold text-text">No candidates applied yet</h3>
+              <h3 className="text-base font-semibold text-text">No applicants scored for this job yet</h3>
               <p className="text-xs text-muted mt-1">
-                Click "Re-match Talent Pool" above or upload resumes to score candidates.
+                Click "Re-match Pool" above or upload resumes to score candidates.
               </p>
             </div>
           ) : (
-            rankedList.map(({ app, candidate }, rank) => (
-              <div
-                key={app.id}
-                onClick={() => navigate(`/app/candidates/${candidate.id}`)}
-                className="bg-card hover:bg-gray-50/70 border border-border hover:border-indigo-200 rounded-xl p-4 shadow-card transition-all cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 group"
-              >
-                {/* Left info */}
-                <div className="flex items-center gap-3.5 flex-1 min-w-0">
-                  <div className="w-6 text-center text-xs font-bold text-muted">
-                    #{rank + 1}
-                  </div>
-                  <Avatar name={candidate.name} size="md" isBlind={company.settings.blindMode} />
-                  <div className="space-y-1 flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-text text-sm group-hover:text-primary transition-colors">
-                        {company.settings.blindMode ? 'Candidate ' + candidate.id.slice(-4) : candidate.name}
-                      </span>
-                      <Badge variant="outline" size="sm">
-                        {app.stage}
-                      </Badge>
-                    </div>
+            rankingData.map((item, rank) => {
+              const { candidate, application_id, match_score, breakdown, matched_skills, missing_skills, explanation, stage } = item
+              const isExpanded = expandedBreakdownId === application_id
+              const totalReqSkills = job.requirements.requiredSkills.length
 
-                    <div className="flex items-center gap-3 text-xs text-muted">
-                      <span>{candidate.college}</span>
-                      <span>•</span>
-                      <span>CGPA: <strong className="text-text">{candidate.cgpa}</strong></span>
-                      <span>•</span>
-                      <span>{candidate.experienceYears}y exp</span>
-                      <span>•</span>
-                      <span>{candidate.location}</span>
-                    </div>
-
-                    <p className="text-xs text-muted italic line-clamp-1">
-                      💡 {app.explanation}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Right: Score Ring + Breakdown + Actions */}
-                <div className="flex items-center gap-4 shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <div className="text-right hidden sm:block">
-                    <div className="text-[10px] text-muted">Match Breakdown</div>
-                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-text mt-0.5">
-                      <span title="Skills Score">Skills {app.breakdown.skills}%</span>
-                      <span>•</span>
-                      <span title="Experience Score">Exp {app.breakdown.experience}%</span>
-                      <span>•</span>
-                      <span title="Education Score">Edu {app.breakdown.education}%</span>
-                    </div>
-                  </div>
-
-                  <ScoreRing score={app.matchScore} size="md" />
-
-                  {app.stage === 'applied' && (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleShortlist(app.id, candidate.name)}
+              return (
+                <div
+                  key={application_id}
+                  className="bg-card border border-border hover:border-indigo-200 rounded-xl p-4 shadow-card transition-all space-y-3"
+                >
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    {/* Left candidate info */}
+                    <div
+                      className="flex items-center gap-3.5 flex-1 min-w-0 cursor-pointer"
+                      onClick={() => navigate(`/app/candidates/${candidate.id}`)}
                     >
-                      Shortlist
-                    </Button>
-                  )}
-                  {app.stage === 'shortlisted' && (
-                    <Badge variant="success" size="md">Shortlisted</Badge>
+                      <div className="w-6 text-center text-xs font-bold text-muted">
+                        #{rank + 1}
+                      </div>
+                      <Avatar name={candidate.name} size="md" isBlind={company.settings.blindMode} />
+                      <div className="space-y-1 flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-text text-sm hover:text-primary transition-colors">
+                            {company.settings.blindMode ? 'Candidate ' + candidate.id.slice(-4) : candidate.name}
+                          </span>
+                          <Badge variant="outline" size="sm">
+                            {stage}
+                          </Badge>
+                        </div>
+
+                        <div className="flex items-center gap-3 text-xs text-muted">
+                          <span>{candidate.college}</span>
+                          <span>•</span>
+                          <span>CGPA: <strong className="text-text">{candidate.cgpa}</strong></span>
+                          <span>•</span>
+                          <span>{candidate.experienceYears}y exp</span>
+                          <span>•</span>
+                          <span>{candidate.location}</span>
+                        </div>
+
+                        <p className="text-xs text-muted italic line-clamp-1">
+                          💡 {explanation}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Middle Score Bar */}
+                    <div className="w-48 shrink-0 space-y-1">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-text">Match Score</span>
+                        <span className="font-extrabold text-primary">{match_score}/100</span>
+                      </div>
+                      <div className="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            match_score >= 80 ? 'bg-emerald-500' : match_score >= 60 ? 'bg-indigo-500' : 'bg-amber-500'
+                          }`}
+                          style={{ width: `${match_score}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Right: Breakdown Popover Toggle + Action Button */}
+                    <div className="flex items-center gap-3 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedBreakdownId(isExpanded ? null : application_id)}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors flex items-center gap-1.5 ${
+                          isExpanded
+                            ? 'bg-indigo-50 text-primary border-indigo-300'
+                            : 'bg-white text-muted hover:text-text border-border'
+                        }`}
+                      >
+                        <Info className="w-3.5 h-3.5 text-primary" />
+                        <span>Breakdown ({matched_skills.length}/{totalReqSkills})</span>
+                      </button>
+
+                      {stage !== 'shortlisted' && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          leftIcon={<Check className="w-3.5 h-3.5" />}
+                          onClick={() => handleShortlist(application_id, candidate.name)}
+                        >
+                          Shortlist
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Breakdown Popover Panel per Plan (Matched skills green, missing red) */}
+                  {isExpanded && (
+                    <div className="p-3.5 rounded-lg bg-gray-50/80 border border-border space-y-3 animate-in fade-in-0 duration-150">
+                      <div className="flex items-center justify-between border-b border-border pb-2">
+                        <span className="text-xs font-bold text-text uppercase tracking-wider">
+                          Scoring Breakdown & Competency Alignment
+                        </span>
+                        <button onClick={() => setExpandedBreakdownId(null)} className="text-muted hover:text-text">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Dimension scores */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div className="p-2 rounded bg-white border border-border">
+                          <div className="text-[10px] text-muted">Skills Coverage</div>
+                          <div className="font-bold text-text">{breakdown.skills}%</div>
+                        </div>
+                        <div className="p-2 rounded bg-white border border-border">
+                          <div className="text-[10px] text-muted">Experience Fit</div>
+                          <div className="font-bold text-text">{breakdown.experience}%</div>
+                        </div>
+                        <div className="p-2 rounded bg-white border border-border">
+                          <div className="text-[10px] text-muted">Education & CGPA</div>
+                          <div className="font-bold text-text">{breakdown.education}%</div>
+                        </div>
+                        <div className="p-2 rounded bg-white border border-border">
+                          <div className="text-[10px] text-muted">Semantic Alignment</div>
+                          <div className="font-bold text-text">{breakdown.semantic}%</div>
+                        </div>
+                      </div>
+
+                      {/* Skills Alignment: Matched Green, Missing Red */}
+                      <div className="space-y-2 pt-1">
+                        <div>
+                          <span className="text-[11px] font-bold text-emerald-800 block mb-1">
+                            Matched Skills ({matched_skills.length}):
+                          </span>
+                          <div className="flex flex-wrap gap-1">
+                            {matched_skills.map((s) => (
+                              <span
+                                key={s}
+                                className="px-2 py-0.5 rounded text-xs bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200"
+                              >
+                                ✓ {s}
+                              </span>
+                            ))}
+                            {matched_skills.length === 0 && (
+                              <span className="text-xs text-muted italic">None of the required skills matched</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {missing_skills.length > 0 && (
+                          <div>
+                            <span className="text-[11px] font-bold text-rose-800 block mb-1">
+                              Missing Competencies ({missing_skills.length}):
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {missing_skills.map((s) => (
+                                <span
+                                  key={s}
+                                  className="px-2 py-0.5 rounded text-xs bg-rose-50 text-rose-800 font-semibold border border-rose-200"
+                                >
+                                  ✕ {s}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
-              </div>
-            ))
+              )
+            })
           )}
         </TabsContent>
 
-        {/* TAB 2: Requirements & JD */}
+        {/* TAB 2: Requirements & JD (Editable on save via PATCH /jobs/{id}) */}
         <TabsContent value="requirements" className="space-y-6 mt-4">
           <div className="bg-card rounded-xl border border-border p-6 shadow-soft space-y-4">
-            <h2 className="text-base font-bold text-text">Job Description</h2>
-            <div className="text-sm text-text whitespace-pre-line leading-relaxed bg-gray-50 p-4 rounded-lg border border-border">
-              {job.jdText}
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div>
+                <h2 className="text-base font-bold text-text">Job Description & Competencies</h2>
+                <p className="text-xs text-muted">Edit requirements and save to trigger immediate candidate re-ranking.</p>
+              </div>
+
+              {isEditingReqs ? (
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setIsEditingReqs(false)}>
+                    Cancel
+                  </Button>
+                  <Button variant="primary" size="sm" leftIcon={<Save className="w-3.5 h-3.5" />} onClick={handleSaveRequirements}>
+                    Save Changes
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="outline" size="sm" leftIcon={<Edit2 className="w-3.5 h-3.5" />} onClick={() => setIsEditingReqs(true)}>
+                  Edit Requirements
+                </Button>
+              )}
             </div>
 
-            <div className="pt-4 border-t border-border space-y-3">
-              <h3 className="text-sm font-bold text-text">Configured Screening Criteria</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <div className="text-xs text-muted mb-1">Required Skills</div>
-                  <div className="flex flex-wrap gap-1">
-                    {job.requirements.requiredSkills.map((s) => (
-                      <SkillChip key={s} name={s} status="required" />
-                    ))}
+            {/* Editable Fields Mode */}
+            {isEditingReqs ? (
+              <div className="space-y-4 p-4 rounded-xl bg-gray-50 border border-border">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-text mb-1">Job Location</label>
+                    <Input value={editLocation} onChange={(e) => setEditLocation(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-text mb-1">Min Experience (Years)</label>
+                    <Input
+                      type="number"
+                      value={editMinExp}
+                      onChange={(e) => setEditMinExp(parseFloat(e.target.value) || 0)}
+                    />
                   </div>
                 </div>
+
                 <div>
-                  <div className="text-xs text-muted mb-1">Preferred Skills</div>
-                  <div className="flex flex-wrap gap-1">
-                    {job.requirements.preferredSkills.map((s) => (
-                      <SkillChip key={s} name={s} status="preferred" />
-                    ))}
+                  <label className="block text-xs font-semibold text-text mb-1">
+                    Required Skills (comma-separated)
+                  </label>
+                  <Input
+                    value={editReqSkills.join(', ')}
+                    onChange={(e) =>
+                      setEditReqSkills(
+                        e.target.value
+                          .split(',')
+                          .map((s) => s.trim())
+                          .filter(Boolean)
+                      )
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-text mb-1">
+                    Preferred Skills (comma-separated)
+                  </label>
+                  <Input
+                    value={editPrefSkills.join(', ')}
+                    onChange={(e) =>
+                      setEditPrefSkills(
+                        e.target.value
+                          .split(',')
+                          .map((s) => s.trim())
+                          .filter(Boolean)
+                      )
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-text mb-1">Minimum CGPA</label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={editMinCgpa}
+                    onChange={(e) => setEditMinCgpa(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+              </div>
+            ) : (
+              /* View Mode */
+              <div className="space-y-4">
+                <div className="text-sm text-text whitespace-pre-line leading-relaxed bg-gray-50 p-4 rounded-lg border border-border max-h-60 overflow-y-auto font-mono text-xs">
+                  {job.jdText}
+                </div>
+
+                <div className="pt-2 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-xs font-bold text-muted mb-1">Required Skills</div>
+                      <div className="flex flex-wrap gap-1">
+                        {job.requirements.requiredSkills.map((s) => (
+                          <SkillChip key={s} name={s} status="required" />
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-muted mb-1">Preferred Skills</div>
+                      <div className="flex flex-wrap gap-1">
+                        {job.requirements.preferredSkills.map((s) => (
+                          <SkillChip key={s} name={s} status="preferred" />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-xs">
+                    <div className="p-3 bg-gray-50 rounded-lg border border-border">
+                      <div className="text-muted">Min Experience</div>
+                      <div className="font-bold text-sm text-text mt-0.5">{job.requirements.minExperience} Years</div>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-lg border border-border">
+                      <div className="text-muted">Min CGPA</div>
+                      <div className="font-bold text-sm text-text mt-0.5">{job.requirements.minCgpa} / 10</div>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-lg border border-border">
+                      <div className="text-muted">Target Grad Batches</div>
+                      <div className="font-bold text-sm text-text mt-0.5">{job.requirements.gradYears.join(', ')}</div>
+                    </div>
+                    <div className="p-3 bg-gray-50 rounded-lg border border-border">
+                      <div className="text-muted">Location</div>
+                      <div className="font-bold text-sm text-text mt-0.5">{job.location}</div>
+                    </div>
                   </div>
                 </div>
               </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-xs">
-                <div className="p-3 bg-gray-50 rounded-lg border border-border">
-                  <div className="text-muted">Min Experience</div>
-                  <div className="font-bold text-sm text-text mt-0.5">{job.requirements.minExperience} Years</div>
-                </div>
-                <div className="p-3 bg-gray-50 rounded-lg border border-border">
-                  <div className="text-muted">Min CGPA</div>
-                  <div className="font-bold text-sm text-text mt-0.5">{job.requirements.minCgpa} / 10</div>
-                </div>
-                <div className="p-3 bg-gray-50 rounded-lg border border-border">
-                  <div className="text-muted">Target Grad Batches</div>
-                  <div className="font-bold text-sm text-text mt-0.5">{job.requirements.gradYears.join(', ')}</div>
-                </div>
-                <div className="p-3 bg-gray-50 rounded-lg border border-border">
-                  <div className="text-muted">Min 10th/12th %</div>
-                  <div className="font-bold text-sm text-text mt-0.5">{job.requirements.minTenth}% / {job.requirements.minTwelfth}%</div>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </TabsContent>
 
-        {/* TAB 3: Skill Gap Insights */}
-        <TabsContent value="insights" className="space-y-4 mt-4">
-          <div className="bg-card rounded-xl border border-border p-6 shadow-soft space-y-4">
-            <div>
-              <h2 className="text-base font-bold text-text">Skill Supply in Applicant Pool</h2>
-              <p className="text-xs text-muted">
-                Percentage of current applicants possessing each required skill.
-              </p>
-            </div>
+        {/* TAB 3: Skill Gap Insights & Funnel Chart */}
+        <TabsContent value="insights" className="space-y-6 mt-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Skill Gap Chart */}
+            <div className="bg-card rounded-xl border border-border p-6 shadow-soft space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-text">Skill Supply in Applicant Pool</h3>
+                <p className="text-xs text-muted">
+                  Coverage of required competencies among current applicants from GET /jobs/{job.id}/skill-gap.
+                </p>
+              </div>
 
-            <div className="space-y-3">
-              {job.requirements.requiredSkills.map((skill) => {
-                const count = skillSupplyCount[skill] || 0
-                const percent = totalApplicants > 0 ? Math.round((count / totalApplicants) * 100) : 0
-
-                return (
-                  <div key={skill} className="space-y-1">
+              <div className="space-y-3">
+                {skillGapData.map((item) => (
+                  <div key={item.name} className="space-y-1">
                     <div className="flex justify-between text-xs font-semibold">
-                      <span>{skill}</span>
+                      <span className="flex items-center gap-1.5">
+                        {item.name}
+                        {item.required && <Badge variant="secondary" size="sm">Required</Badge>}
+                      </span>
                       <span className="text-muted">
-                        {count} of {totalApplicants} applicants ({percent}%)
+                        {item.applicants_count} of {totalApplicants} ({item.coverage_pct}%)
                       </span>
                     </div>
                     <div className="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
                       <div
                         className={`h-full rounded-full ${
-                          percent >= 60 ? 'bg-emerald-500' : percent >= 30 ? 'bg-indigo-500' : 'bg-amber-500'
+                          item.coverage_pct >= 60
+                            ? 'bg-emerald-500'
+                            : item.coverage_pct >= 30
+                            ? 'bg-indigo-500'
+                            : 'bg-amber-500'
                         }`}
-                        style={{ width: `${percent}%` }}
+                        style={{ width: `${item.coverage_pct}%` }}
                       />
                     </div>
                   </div>
-                )
-              })}
+                ))}
+              </div>
+            </div>
+
+            {/* Pipeline Funnel (Numbers strictly match the table) */}
+            <div className="bg-card rounded-xl border border-border p-6 shadow-soft space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-text">Job Recruitment Funnel</h3>
+                  <p className="text-xs text-muted">Current stage distribution ({totalApplicants} Total)</p>
+                </div>
+              </div>
+
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={funnelData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Bar dataKey="count" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
         </TabsContent>

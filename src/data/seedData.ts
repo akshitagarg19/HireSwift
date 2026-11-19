@@ -246,7 +246,7 @@ Preferred: Prometheus, Grafana, Ansible, Python scripting.`,
   {
     id: 'job-campus-1',
     companyId: 'company-campus',
-    title: 'Graduate Software Engineer Trainee (Batch 2025)',
+    title: 'Graduate Engineer Trainee (Campus Recruitment 2025)',
     department: 'Engineering Campuses',
     location: 'Delhi NCR, India',
     type: 'Full-time',

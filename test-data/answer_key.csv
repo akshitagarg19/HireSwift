@@ -1,0 +1,7 @@
+candidate_id,candidate_name,job_target,expected_rank,expected_score_range,why
+cand-aditi-001,Aditi Sharma,Full Stack Engineer,1,92-96%,Perfect match for all required skills (React TypeScript Node.js PostgreSQL Docker) plus 3y exp and Tier-1 IIT Delhi degree
+cand-priya-002,Priya Patel,Full Stack Engineer,2,78-84%,Strong React and TypeScript frontend skills with 2y exp; missing backend Docker and Node.js depth
+cand-vikram-003,Vikram Singh,Full Stack Engineer,3,68-74%,Excellent Docker and AWS containerization background with 3.5y exp; lacks core React frontend skills
+cand-rohan-004,Rohan Verma,Python Data Engineer,1,94-98%,Matches all core skills (Python FastAPI SQL Docker Spark) with 4y relevant data experience and Tier-1 BITS degree
+cand-ananya-005,Ananya Iyer,Campus Graduate Trainee,1,94-98%,Top tier 9.35 CGPA from IIT Bombay with 96%+ in 10th and 12th; strong C++ and algorithms proficiency
+cand-rahul-006,Rahul Nair,Campus Graduate Trainee,2,84-90%,High 8.7 CGPA from VIT with good Java and SQL foundations; solid candidate meeting all academic thresholds

@@ -34,6 +34,15 @@ export const LoginPage: React.FC = () => {
     setPassword('demo123')
   }
 
+  const handleQuickDemoLogin = (demoEmail: string) => {
+    fillDemoLogin(demoEmail)
+    const ok = login(demoEmail)
+    if (ok) {
+      toast.success('Signed in as Demo User')
+      navigate('/app/dashboard')
+    }
+  }
+
   return (
     <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2 bg-background">
       {/* LEFT: Sign-in Form */}
@@ -124,38 +133,38 @@ export const LoginPage: React.FC = () => {
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
                 type="button"
-                onClick={() => fillDemoLogin('admin@novalabs.com')}
+                onClick={() => handleQuickDemoLogin('admin@novalabs.com')}
                 className="p-2 rounded-lg border border-border bg-gray-50 hover:bg-indigo-50/60 hover:border-indigo-200 text-left transition-colors"
               >
-                <div className="font-semibold text-text">Nova Labs (Admin)</div>
-                <div className="text-[11px] text-muted">admin@novalabs.com</div>
+                <div className="font-semibold text-text">Demo Login: Nova Labs</div>
+                <div className="text-[11px] text-muted">admin@novalabs.com (Admin)</div>
               </button>
 
               <button
                 type="button"
-                onClick={() => fillDemoLogin('admin@campushire.com')}
+                onClick={() => handleQuickDemoLogin('admin@campushire.com')}
                 className="p-2 rounded-lg border border-border bg-gray-50 hover:bg-indigo-50/60 hover:border-indigo-200 text-left transition-colors"
               >
-                <div className="font-semibold text-text">Campus Hire (Admin)</div>
-                <div className="text-[11px] text-muted">admin@campushire.com</div>
+                <div className="font-semibold text-text">Demo Login: Campus Hire</div>
+                <div className="text-[11px] text-muted">admin@campushire.com (Admin)</div>
               </button>
 
               <button
                 type="button"
-                onClick={() => fillDemoLogin('recruiter@novalabs.com')}
+                onClick={() => handleQuickDemoLogin('recruiter@novalabs.com')}
                 className="p-2 rounded-lg border border-border bg-gray-50 hover:bg-indigo-50/60 hover:border-indigo-200 text-left transition-colors"
               >
-                <div className="font-semibold text-text">Recruiter</div>
+                <div className="font-semibold text-text">Demo Login: Recruiter</div>
                 <div className="text-[11px] text-muted">recruiter@novalabs.com</div>
               </button>
 
               <button
                 type="button"
-                onClick={() => fillDemoLogin('viewer@novalabs.com')}
+                onClick={() => handleQuickDemoLogin('viewer@novalabs.com')}
                 className="p-2 rounded-lg border border-border bg-gray-50 hover:bg-indigo-50/60 hover:border-indigo-200 text-left transition-colors"
               >
-                <div className="font-semibold text-text">Viewer (Read-Only)</div>
-                <div className="text-[11px] text-muted">viewer@novalabs.com</div>
+                <div className="font-semibold text-text">Demo Login: Viewer</div>
+                <div className="text-[11px] text-muted">viewer@novalabs.com (Read-Only)</div>
               </button>
             </div>
           </div>

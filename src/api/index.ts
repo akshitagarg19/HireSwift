@@ -318,3 +318,7 @@ export const auditApi = {
     return store.auditLogs.filter((l) => l.companyId === targetId)
   },
 }
+
+// Re-export unified API client conforming to API.md
+export * from './client'
+export { api as default } from './client'

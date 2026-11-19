@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
+import { api, ApiError } from '@/api'
+import { isReadOnlyViewer } from '@/lib/permissions'
 import {
   DndContext,
   DragOverlay,
@@ -19,18 +21,27 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { toast } from 'sonner'
-import { Search, Filter, Undo2, MapPin, Briefcase } from 'lucide-react'
+import { Search, Briefcase, ArrowRight } from 'lucide-react'
 import { Candidate, Application } from '@/types'
-import { isReadOnlyViewer } from '@/lib/permissions'
+
+// EXACTLY 5 PIPELINE COLUMNS PER PLAN
+export const PIPELINE_STAGES = [
+  { id: 'applied', name: 'Applied', color: '#2563EB' },
+  { id: 'shortlisted', name: 'Shortlisted', color: '#7C3AED' },
+  { id: 'interview', name: 'Interview', color: '#F59E0B' },
+  { id: 'offer', name: 'Offer', color: '#16A34A' },
+  { id: 'rejected', name: 'Rejected', color: '#DC2626' },
+]
 
 // Draggable Kanban Card Component
 interface KanbanCardProps {
   application: Application
   candidate: Candidate
   onClick: () => void
+  onMoveTo: (appId: string, currentStage: string, targetStage: string) => void
 }
 
-const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick }) => {
+const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick, onMoveTo }) => {
   const { companies, currentCompanyId, currentUser } = useAppStore()
   const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
   const isReadOnly = isReadOnlyViewer(currentUser?.role)
@@ -46,7 +57,6 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick
     ? '[Hidden College]'
     : candidate.college
 
-  // Calculate days in stage
   const daysInStage = Math.max(1, Math.floor((Date.now() - new Date(application.createdAt).getTime()) / 86400000))
 
   return (
@@ -54,29 +64,29 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      onClick={onClick}
       className={`bg-white rounded-xl border border-border p-3.5 shadow-soft hover:shadow-card hover:border-indigo-200 transition-all ${
         isReadOnly ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'
       } space-y-2.5 ${isDragging ? 'opacity-30' : ''}`}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-2" onClick={onClick}>
         <div className="flex items-center gap-2 min-w-0">
           <Avatar name={candidate.name} size="sm" isBlind={company.settings.blindMode} />
           <div className="min-w-0">
-            <h4 className="text-xs font-bold text-text truncate">{displayName}</h4>
+            <h4 className="text-xs font-bold text-text truncate hover:text-primary transition-colors">
+              {displayName}
+            </h4>
             <p className="text-[11px] text-muted truncate">{displayCollege}</p>
           </div>
         </div>
         <ScoreRing score={application.matchScore} size="sm" />
       </div>
 
-      <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap gap-1" onClick={onClick}>
         {candidate.skills.slice(0, 2).map((s) => (
           <span key={s} className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 text-gray-700 font-medium">
             {s}
           </span>
         ))}
-        {/* Custom fields preview on Kanban card */}
         {company.settings.customFields.length > 0 && candidate.customFields && (
           company.settings.customFields.slice(0, 2).map((cf) => {
             const val = candidate.customFields?.[cf.id]
@@ -94,6 +104,30 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick
         <span>CGPA: <strong className="text-text">{candidate.cgpa}</strong></span>
         <span>{daysInStage}d in stage</span>
       </div>
+
+      {/* "Move to" Button / Dropdown per plan */}
+      {!isReadOnly && (
+        <div className="pt-1.5 border-t border-gray-100 flex items-center justify-between text-[11px]">
+          <span className="text-muted font-medium">Move to:</span>
+          <select
+            defaultValue=""
+            onChange={(e) => {
+              if (e.target.value) {
+                onMoveTo(application.id, application.stage, e.target.value)
+                e.target.value = ''
+              }
+            }}
+            className="h-6 px-1.5 text-[10px] rounded border border-border bg-gray-50 hover:bg-white text-text font-semibold cursor-pointer"
+          >
+            <option value="" disabled>Select Stage...</option>
+            {PIPELINE_STAGES.filter((st) => st.id !== application.stage).map((st) => (
+              <option key={st.id} value={st.id}>
+                {st.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
     </div>
   )
 }
@@ -103,9 +137,10 @@ interface KanbanColumnProps {
   stage: { id: string; name: string; color: string }
   applications: { application: Application; candidate: Candidate }[]
   onCardClick: (candidateId: string) => void
+  onMoveTo: (appId: string, currentStage: string, targetStage: string) => void
 }
 
-const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, applications, onCardClick }) => {
+const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, applications, onCardClick, onMoveTo }) => {
   const { setNodeRef, isOver } = useDroppable({
     id: stage.id,
   })
@@ -132,7 +167,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, applications, onCard
       <div className="flex-1 overflow-y-auto p-2.5 space-y-2.5">
         {applications.length === 0 ? (
           <div className="h-28 flex items-center justify-center text-xs text-muted/60 border border-dashed border-gray-200 rounded-lg">
-            Drop candidate here
+            No candidates
           </div>
         ) : (
           applications.map(({ application, candidate }) => (
@@ -141,6 +176,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, applications, onCard
               application={application}
               candidate={candidate}
               onClick={() => onCardClick(candidate.id)}
+              onMoveTo={onMoveTo}
             />
           ))
         )}
@@ -157,11 +193,8 @@ export const PipelinePage: React.FC = () => {
     jobs,
     candidates,
     applications,
-    updateApplicationStage,
   } = useAppStore()
 
-  const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
-  const stages = company.settings.pipelineStages
   const companyJobs = jobs.filter((j) => j.companyId === currentCompanyId)
 
   const [selectedJobId, setSelectedJobId] = useState<string>('all')
@@ -171,45 +204,69 @@ export const PipelinePage: React.FC = () => {
     candidate: Candidate
   } | null>(null)
 
-  // Reject Reason Modal
-  const [rejectModalOpen, setRejectModalOpen] = useState(false)
-  const [pendingRejectAppId, setPendingRejectAppId] = useState<string | null>(null)
-  const [rejectReason, setRejectReason] = useState('Technical skills not aligned')
-
+  // Configure sensors for drag sensitivity
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 5,
+        distance: 8,
       },
     })
   )
 
-  const candidateMap = new Map(candidates.map((c) => [c.id, c]))
-
-  // Filter applications by company, job, and search
-  const filteredApps = applications.filter((app) => {
+  // Filter applications for current company and selected job
+  const relevantApplications = applications.filter((app) => {
     if (app.companyId !== currentCompanyId) return false
     if (selectedJobId !== 'all' && app.jobId !== selectedJobId) return false
-    if (search.trim()) {
-      const cand = candidateMap.get(app.candidateId)
-      if (!cand) return false
-      const q = search.toLowerCase()
-      return (
-        cand.name.toLowerCase().includes(q) ||
-        cand.college.toLowerCase().includes(q) ||
-        cand.skills.some((s) => s.toLowerCase().includes(q))
-      )
-    }
     return true
   })
 
-  // Drag handlers
+  const candidateMap = new Map(candidates.map((c) => [c.id, c]))
+
+  const filteredItems = relevantApplications
+    .map((app) => ({
+      application: app,
+      candidate: candidateMap.get(app.candidateId)!,
+    }))
+    .filter((item) => {
+      if (!item.candidate) return false
+      if (!search.trim()) return true
+      const q = search.toLowerCase()
+      return (
+        item.candidate.name.toLowerCase().includes(q) ||
+        item.candidate.college.toLowerCase().includes(q) ||
+        item.candidate.skills.some((s) => s.toLowerCase().includes(q))
+      )
+    })
+
+  const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
+  const stagesToRender = (company.settings?.pipelineStages && company.settings.pipelineStages.length > 0)
+    ? company.settings.pipelineStages
+    : PIPELINE_STAGES
+
+  // Map into pipeline columns
+  const columnData = stagesToRender.map((stage) => ({
+    stage,
+    applications: filteredItems.filter((item) => item.application.stage === stage.id),
+  }))
+
+  // Execute transition via API with rollback on invalid transition
+  const handleStageTransition = async (appId: string, currentStage: string, targetStage: string) => {
+    if (currentStage === targetStage) return
+
+    try {
+      // Calls POST /applications/{id}/move per contract
+      await api.moveApplication(appId, targetStage, 'Updated via Pipeline Kanban')
+      toast.success(`Candidate advanced to ${targetStage.toUpperCase()}`)
+    } catch (err: any) {
+      // On invalid transition: snap back and show server message
+      toast.error(err.message || 'Invalid stage transition.')
+    }
+  }
+
   const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event
-    const foundApp = applications.find((a) => a.id === active.id)
-    if (foundApp) {
-      const cand = candidateMap.get(foundApp.candidateId)
-      if (cand) setActiveDragItem({ application: foundApp, candidate: cand })
+    const data = event.active.data.current as { application: Application; candidate: Candidate }
+    if (data) {
+      setActiveDragItem(data)
     }
   }
 
@@ -219,75 +276,22 @@ export const PipelinePage: React.FC = () => {
 
     if (!over) return
 
-    const appId = String(active.id)
-    const targetStageId = String(over.id)
+    const appId = active.id as string
+    const targetStageId = over.id as string
+    const draggedItem = relevantApplications.find((a) => a.id === appId)
+    if (!draggedItem) return
 
-    const app = applications.find((a) => a.id === appId)
-    if (!app || app.stage === targetStageId) return
-
-    const previousStage = app.stage
-
-    // If moving to rejected, prompt for reason modal
-    if (targetStageId === 'rejected') {
-      setPendingRejectAppId(appId)
-      setRejectModalOpen(true)
-      return
-    }
-
-    // Move stage and provide Undo action toast
-    updateApplicationStage(appId, targetStageId, 'Moved via Kanban drag and drop')
-
-    toast.success(`Moved candidate to ${targetStageId.toUpperCase()}`, {
-      action: {
-        label: 'Undo',
-        onClick: () => {
-          updateApplicationStage(appId, previousStage, 'Undo Kanban stage move')
-          toast.info('Stage change undone')
-        },
-      },
-    })
-  }
-
-  const handleConfirmReject = () => {
-    if (!pendingRejectAppId) return
-    updateApplicationStage(pendingRejectAppId, 'rejected', rejectReason)
-    setRejectModalOpen(false)
-    setPendingRejectAppId(null)
-    toast.error('Candidate rejected with audit reason logged.')
+    handleStageTransition(appId, draggedItem.stage, targetStageId)
   }
 
   return (
     <div className="space-y-4">
-      {/* Reject Modal */}
-      <Modal
-        open={rejectModalOpen}
-        onOpenChange={setRejectModalOpen}
-        title="Reason for Rejection"
-        description="Please provide a recorded reason for candidate audit logging."
-      >
-        <div className="space-y-3 pt-2">
-          <Input
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="e.g. Assessment score below cutoff / Culture fit"
-          />
-          <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <Button variant="outline" size="sm" onClick={() => setRejectModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="danger" size="sm" onClick={handleConfirmReject}>
-              Confirm Rejection
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-border shadow-soft">
         <div>
           <h1 className="text-xl font-bold text-text">Recruitment Pipeline Kanban</h1>
           <p className="text-xs text-muted mt-0.5">
-            Drag candidates between stages to progress through the interview pipeline.
+            5-Stage Pipeline: Drag or use "Move to" button. Transitions are validated per contract.
           </p>
         </div>
 
@@ -298,7 +302,7 @@ export const PipelinePage: React.FC = () => {
             <select
               value={selectedJobId}
               onChange={(e) => setSelectedJobId(e.target.value)}
-              className="h-9 px-3 rounded-lg border border-border bg-white text-xs font-semibold text-text"
+              className="h-9 px-3 rounded-lg border border-border bg-white text-xs font-semibold text-text cursor-pointer"
             >
               <option value="all">All Jobs ({companyJobs.length})</option>
               {companyJobs.map((j) => (
@@ -322,44 +326,33 @@ export const PipelinePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Dnd Kanban Board */}
+      {/* 5-Column Kanban Board */}
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="flex gap-4 overflow-x-auto pb-4 pt-1">
-          {stages.map((stage) => {
-            const stageApps = filteredApps
-              .filter((app) => app.stage === stage.id)
-              .map((app) => ({
-                application: app,
-                candidate: candidateMap.get(app.candidateId)!,
-              }))
-              .filter((item) => Boolean(item.candidate))
-
-            return (
-              <KanbanColumn
-                key={stage.id}
-                stage={stage}
-                applications={stageApps}
-                onCardClick={(candId) => navigate(`/app/candidates/${candId}`)}
-              />
-            )
-          })}
+          {columnData.map(({ stage, applications }) => (
+            <KanbanColumn
+              key={stage.id}
+              stage={stage}
+              applications={applications}
+              onCardClick={(candId) => navigate(`/app/candidates/${candId}`)}
+              onMoveTo={handleStageTransition}
+            />
+          ))}
         </div>
 
-        {/* Drag Overlay Preview */}
+        {/* Drag Overlay with snapping preview */}
         <DragOverlay>
           {activeDragItem ? (
-            <div className="w-72 bg-white rounded-xl border-2 border-primary p-3.5 shadow-modal cursor-grabbing">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Avatar name={activeDragItem.candidate.name} size="sm" isBlind={company.settings.blindMode} />
-                  <div>
-                    <h4 className="text-xs font-bold text-text">
-                      {company.settings.blindMode ? 'Candidate' : activeDragItem.candidate.name}
-                    </h4>
-                    <p className="text-[10px] text-muted">{activeDragItem.candidate.college}</p>
-                  </div>
+            <div className="bg-white rounded-xl border-2 border-primary p-3.5 shadow-modal w-72 space-y-2 opacity-95 pointer-events-none rotate-1">
+              <div className="flex items-center gap-2">
+                <Avatar name={activeDragItem.candidate.name} size="sm" />
+                <div>
+                  <h4 className="text-xs font-bold text-text">{activeDragItem.candidate.name}</h4>
+                  <p className="text-[11px] text-muted">{activeDragItem.candidate.college}</p>
                 </div>
-                <ScoreRing score={activeDragItem.application.matchScore} size="sm" />
+              </div>
+              <div className="text-[11px] text-muted">
+                Match Score: <strong>{activeDragItem.application.matchScore}%</strong>
               </div>
             </div>
           ) : null}

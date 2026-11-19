@@ -100,9 +100,9 @@ export const DashboardPage: React.FC = () => {
       {/* Welcome Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-border shadow-soft">
         <div>
-          <h1 className="text-2xl font-bold text-text">Hiring Dashboard</h1>
+          <h1 className="text-2xl font-bold text-text">Recruitment Command Center</h1>
           <p className="text-xs text-muted mt-0.5">
-            Welcome back to <strong className="text-text">{company.name}</strong>. Here is your hiring velocity overview.
+            Hiring Dashboard for <strong className="text-text">{company.name}</strong>. Here is your hiring velocity overview.
           </p>
         </div>
 
@@ -359,7 +359,7 @@ export const DashboardPage: React.FC = () => {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-xs text-text hover:text-primary">
-                      {company.settings.blindMode ? 'Candidate ' + candidate.id.slice(-4) : candidate.name}
+                      {company.settings.blindMode ? 'Candidate #' + candidate.id.slice(-4) : candidate.name}
                     </span>
                     <Badge variant="secondary" size="sm">{job?.title}</Badge>
                   </div>

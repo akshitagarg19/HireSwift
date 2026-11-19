@@ -113,7 +113,7 @@ export const CandidateDetailPage: React.FC = () => {
 
   const isBlind = company.settings.blindMode
   const displayName = isBlind ? `Candidate #${candidate.id.slice(-4)}` : candidate.name
-  const displayCollege = isBlind && company.settings.hiddenFields.includes('college') ? '[Hidden College]' : candidate.college
+  const displayCollege = isBlind ? '[Hidden College]' : candidate.college
   const displayLocation = isBlind && company.settings.hiddenFields.includes('location') ? '[Hidden City]' : candidate.location
 
   // Actions

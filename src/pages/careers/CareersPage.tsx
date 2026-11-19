@@ -136,9 +136,11 @@ export const CareersPage: React.FC = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
-                    Apply Now
-                  </Button>
+                  <Link to={`/careers/${companySlug}/${job.id}`}>
+                    <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
+                      Apply Now
+                    </Button>
+                  </Link>
                 </div>
               </div>
             ))

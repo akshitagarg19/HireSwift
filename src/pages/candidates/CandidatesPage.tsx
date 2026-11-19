@@ -2,13 +2,13 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAppStore } from '@/store'
 import { isReadOnlyViewer } from '@/lib/permissions'
+import { api, CandidateFilterParams } from '@/api'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { ScoreRing } from '@/components/ui/ScoreRing'
 import { Avatar } from '@/components/ui/Avatar'
-import { SkillChip } from '@/components/ui/SkillChip'
 import { Modal } from '@/components/ui/Modal'
 import { toast } from 'sonner'
 import {
@@ -26,9 +26,15 @@ import {
   CheckSquare,
   Square,
   Bookmark,
+  AlertTriangle,
+  RotateCcw,
 } from 'lucide-react'
 import { Candidate, Application } from '@/types'
-import { hasSkillWithSynonyms } from '@/lib/scoring'
+
+export interface SkillFilter {
+  name: string
+  mode: 'all' | 'any' | 'none' // all = AND, any = OR, none = NOT
+}
 
 export const CandidatesPage: React.FC = () => {
   const navigate = useNavigate()
@@ -39,36 +45,66 @@ export const CandidatesPage: React.FC = () => {
     candidates,
     applications,
     companies,
+    duplicateGroups,
     bulkUpdateApplicationStage,
   } = useAppStore()
 
   const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
   const isReadOnly = isReadOnlyViewer(currentUser?.role)
 
-  // URL Query Parameters initialization
-  const stageParam = searchParams.get('stage')
-  const searchParam = searchParams.get('q') || searchParams.get('search') || ''
+  // Duplicate candidate ID set
+  const duplicateCandidateIds = useMemo(() => {
+    const set = new Set<string>()
+    duplicateGroups
+      .filter((g) => g.companyId === currentCompanyId && g.status === 'Pending')
+      .forEach((g) => g.candidateIds.forEach((id) => set.add(id)))
+    return set
+  }, [duplicateGroups, currentCompanyId])
+
+  // Parse Initial URL Query Parameters
+  const initialQ = searchParams.get('q') || searchParams.get('search') || ''
+  const initialCgpa = parseFloat(searchParams.get('cgpa_min') || '0') || 0
+  const initialTenth = parseInt(searchParams.get('tenth_min') || '0', 10) || 0
+  const initialTwelfth = parseInt(searchParams.get('twelfth_min') || '0', 10) || 0
+  const initialExpMin = parseFloat(searchParams.get('exp_min') || '0') || 0
+  const initialExpMax = parseFloat(searchParams.get('exp_max') || '10') || 10
+  const initialCity = searchParams.get('city') || 'All'
+  const initialBatch = searchParams.get('grad_year') ? parseInt(searchParams.get('grad_year')!, 10) : null
+  const initialUnknown = searchParams.get('include_unknown') === 'true'
+  const initialStage = searchParams.get('stage')
+
+  // Parse initial skills
+  const initialSkillsList: SkillFilter[] = useMemo(() => {
+    const list: SkillFilter[] = []
+    const all = searchParams.get('skills_all')?.split(',').filter(Boolean) || []
+    const any = searchParams.get('skills_any')?.split(',').filter(Boolean) || []
+    const none = searchParams.get('skills_none')?.split(',').filter(Boolean) || []
+
+    all.forEach((s) => list.push({ name: s, mode: 'all' }))
+    any.forEach((s) => list.push({ name: s, mode: 'any' }))
+    none.forEach((s) => list.push({ name: s, mode: 'none' }))
+    return list
+  }, [searchParams])
 
   // Filter states
-  const [nlSearch, setNlSearch] = useState('')
-  const [textSearch, setTextSearch] = useState(searchParam)
-  const [minCgpa, setMinCgpa] = useState<number>(0)
-  const [minTenth, setMinTenth] = useState<number>(0)
-  const [minTwelfth, setMinTwelfth] = useState<number>(0)
-  const [selectedSkills, setSelectedSkills] = useState<string[]>([])
-  const [minExp, setMinExp] = useState<number>(0)
-  const [maxExp, setMaxExp] = useState<number>(10)
-  const [selectedLocations, setSelectedLocations] = useState<string[]>([])
-  const [selectedBatches, setSelectedBatches] = useState<number[]>([])
-  const [selectedStages, setSelectedStages] = useState<string[]>(stageParam ? [stageParam] : [])
-  const [minScore, setMinScore] = useState<number>(0)
-  const [customFieldFilters, setCustomFieldFilters] = useState<Record<string, string>>({})
+  const [textSearch, setTextSearch] = useState(initialQ)
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQ)
+  const [minCgpa, setMinCgpa] = useState<number>(initialCgpa)
+  const [minTenth, setMinTenth] = useState<number>(initialTenth)
+  const [minTwelfth, setMinTwelfth] = useState<number>(initialTwelfth)
+  const [skillFilters, setSkillFilters] = useState<SkillFilter[]>(initialSkillsList)
+  const [minExp, setMinExp] = useState<number>(initialExpMin)
+  const [maxExp, setMaxExp] = useState<number>(initialExpMax)
+  const [selectedCity, setSelectedCity] = useState<string>(initialCity)
+  const [selectedBatch, setSelectedBatch] = useState<number | null>(initialBatch)
+  const [includeUnknown, setIncludeUnknown] = useState<boolean>(initialUnknown)
+  const [selectedStages, setSelectedStages] = useState<string[]>(initialStage ? [initialStage] : [])
 
-  // Update selected stage when URL changes
+  // Sync stage from URL query parameter
   useEffect(() => {
-    const stage = searchParams.get('stage')
-    if (stage) {
-      setSelectedStages([stage])
+    const stageParam = searchParams.get('stage')
+    if (stageParam && !selectedStages.includes(stageParam)) {
+      setSelectedStages([stageParam])
     }
   }, [searchParams])
 
@@ -81,6 +117,14 @@ export const CandidatesPage: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [page, setPage] = useState(1)
   const pageSize = 12
+
+  // Debounce search query input (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(textSearch)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [textSearch])
 
   // Column visibility state (including custom fields)
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
@@ -110,17 +154,17 @@ export const CandidatesPage: React.FC = () => {
     return map
   }, [applications, currentCompanyId])
 
-  // Extract all distinct filter choices
+  // Distinct values for sidebar pickers
   const availableSkills = useMemo(() => {
     const set = new Set<string>()
     companyCandidates.forEach((c) => c.skills.forEach((s) => set.add(s)))
     return Array.from(set).sort()
   }, [companyCandidates])
 
-  const availableLocations = useMemo(() => {
+  const availableCities = useMemo(() => {
     const set = new Set<string>()
     companyCandidates.forEach((c) => set.add(c.location))
-    return Array.from(set).sort()
+    return ['All', ...Array.from(set).sort()]
   }, [companyCandidates])
 
   const availableBatches = useMemo(() => {
@@ -129,150 +173,136 @@ export const CandidatesPage: React.FC = () => {
     return Array.from(set).sort((a, b) => b - a)
   }, [companyCandidates])
 
-  // Natural Language Search Parser
-  const handleNaturalLanguageSearch = (query: string) => {
-    setNlSearch(query)
-    if (!query.trim()) return
+  // Sync state to URL search parameters
+  useEffect(() => {
+    const params = new URLSearchParams()
+    if (debouncedQuery.trim()) params.set('q', debouncedQuery.trim())
+    if (minCgpa > 0) params.set('cgpa_min', String(minCgpa))
+    if (minTenth > 0) params.set('tenth_min', String(minTenth))
+    if (minTwelfth > 0) params.set('twelfth_min', String(minTwelfth))
+    if (minExp > 0) params.set('exp_min', String(minExp))
+    if (maxExp < 10) params.set('exp_max', String(maxExp))
+    if (selectedCity && selectedCity !== 'All') params.set('city', selectedCity)
+    if (selectedBatch) params.set('grad_year', String(selectedBatch))
+    if (includeUnknown) params.set('include_unknown', 'true')
+    if (selectedStages.length > 0) params.set('stage', selectedStages[0])
 
-    const lower = query.toLowerCase()
+    const skillsAll = skillFilters.filter((s) => s.mode === 'all').map((s) => s.name)
+    const skillsAny = skillFilters.filter((s) => s.mode === 'any').map((s) => s.name)
+    const skillsNone = skillFilters.filter((s) => s.mode === 'none').map((s) => s.name)
 
-    // 1. Check CGPA pattern: "cgpa above 8", "cgpa > 7.5", "8+ cgpa"
-    const cgpaMatch = lower.match(/(?:cgpa|gpa)\s*(?:above|>|over|min)?\s*(\d+(?:\.\d+)?)/)
-    if (cgpaMatch && cgpaMatch[1]) {
-      setMinCgpa(parseFloat(cgpaMatch[1]))
-    }
+    if (skillsAll.length > 0) params.set('skills_all', skillsAll.join(','))
+    if (skillsAny.length > 0) params.set('skills_any', skillsAny.join(','))
+    if (skillsNone.length > 0) params.set('skills_none', skillsNone.join(','))
 
-    // 2. Check year pattern: "2025 grads", "batch 2024", "2025"
-    const yearMatches = lower.match(/\b(202[0-6])\b/g)
-    if (yearMatches) {
-      setSelectedBatches(yearMatches.map(Number))
-    }
+    if (page > 1) params.set('page', String(page))
 
-    // 3. Check locations: "delhi", "bengaluru", "pune", "mumbai"
-    const foundLocations: string[] = []
-    availableLocations.forEach((loc) => {
-      if (lower.includes(loc.toLowerCase())) {
-        foundLocations.push(loc)
-      }
-    })
-    if (foundLocations.length > 0) {
-      setSelectedLocations(foundLocations)
-    }
+    setSearchParams(params, { replace: true })
+  }, [
+    debouncedQuery,
+    minCgpa,
+    minTenth,
+    minTwelfth,
+    minExp,
+    maxExp,
+    selectedCity,
+    selectedBatch,
+    includeUnknown,
+    selectedStages,
+    skillFilters,
+    page,
+  ])
 
-    // 4. Check skills: "python", "react", "docker"
-    const foundSkills: string[] = []
-    availableSkills.forEach((skill) => {
-      if (lower.includes(skill.toLowerCase())) {
-        foundSkills.push(skill)
-      }
-    })
-    if (foundSkills.length > 0) {
-      setSelectedSkills(foundSkills)
-    }
-
-    toast.success('Natural language query parsed into filter criteria!')
+  // Skill Chip mode toggler
+  const toggleSkillMode = (skillName: string) => {
+    setSkillFilters((prev) =>
+      prev.map((s) => {
+        if (s.name !== skillName) return s
+        const nextMode: 'all' | 'any' | 'none' =
+          s.mode === 'all' ? 'any' : s.mode === 'any' ? 'none' : 'all'
+        return { ...s, mode: nextMode }
+      })
+    )
   }
 
-  // Saved Filter Presets
-  const applyPreset = (presetName: string) => {
-    if (presetName === 'tier1_coders') {
-      setMinCgpa(8.0)
-      setSelectedSkills(['Python', 'Data Structures', 'Java'])
-      setMinScore(75)
-      toast.info('Applied "Top Tier-1 Coders" preset')
-    } else if (presetName === 'immediate_freshers') {
-      setMinExp(0)
-      setMaxExp(1)
-      setSelectedBatches([2024, 2025])
-      toast.info('Applied "2024-2025 Freshers" preset')
-    } else if (presetName === 'high_matches') {
-      setMinScore(80)
-      setSelectedStages(['applied', 'shortlisted'])
-      toast.info('Applied "High Match Rate (80%+)" preset')
-    }
+  const addSkillFilter = (skillName: string, mode: 'all' | 'any' | 'none' = 'all') => {
+    if (skillFilters.some((s) => s.name.toLowerCase() === skillName.toLowerCase())) return
+    setSkillFilters([...skillFilters, { name: skillName, mode }])
   }
 
-  const clearAllFilters = () => {
-    setNlSearch('')
-    setTextSearch('')
-    setMinCgpa(0)
-    setMinTenth(0)
-    setMinTwelfth(0)
-    setSelectedSkills([])
-    setMinExp(0)
-    setMaxExp(10)
-    setSelectedLocations([])
-    setSelectedBatches([])
-    setSelectedStages([])
-    setMinScore(0)
-    setCustomFieldFilters({})
-    toast.info('All filters cleared')
+  const removeSkillFilter = (skillName: string) => {
+    setSkillFilters(skillFilters.filter((s) => s.name.toLowerCase() !== skillName.toLowerCase()))
   }
 
-  // Active filters count
-  const activeFilterCount =
-    (minCgpa > 0 ? 1 : 0) +
-    (minTenth > 0 ? 1 : 0) +
-    (minTwelfth > 0 ? 1 : 0) +
-    selectedSkills.length +
-    (minExp > 0 || maxExp < 10 ? 1 : 0) +
-    selectedLocations.length +
-    selectedBatches.length +
-    selectedStages.length +
-    (minScore > 0 ? 1 : 0) +
-    Object.keys(customFieldFilters).length
-
-  // Filter candidates logic (Exact and combinable)
+  // Filter candidate pool
   const filteredCandidates = useMemo(() => {
     return companyCandidates.filter((cand) => {
       const app = candidateAppMap.get(cand.id)
       const score = app ? app.matchScore : 0
       const stage = app ? app.stage : 'applied'
 
-      // Text search
-      if (textSearch.trim()) {
-        const query = textSearch.toLowerCase()
+      // Unknown inclusion handling
+      const isUnknownCgpa = cand.cgpa <= 0
+      const isUnknownExp = cand.experienceYears === undefined || cand.experienceYears < 0
+      if (!includeUnknown) {
+        if (minCgpa > 0 && isUnknownCgpa) return false
+        if (minExp > 0 && isUnknownExp) return false
+      }
+
+      // Keyword Search
+      if (debouncedQuery.trim()) {
+        const query = debouncedQuery.toLowerCase()
         const matchesName = cand.name.toLowerCase().includes(query)
         const matchesCollege = cand.college.toLowerCase().includes(query)
         const matchesSkill = cand.skills.some((s) => s.toLowerCase().includes(query))
         if (!matchesName && !matchesCollege && !matchesSkill) return false
       }
 
-      // CGPA
-      if (minCgpa > 0 && cand.cgpa < minCgpa) return false
-
-      // 10th / 12th
+      // Academic thresholds
+      if (minCgpa > 0 && !isUnknownCgpa && cand.cgpa < minCgpa) return false
       if (minTenth > 0 && cand.tenthPercent < minTenth) return false
       if (minTwelfth > 0 && cand.twelfthPercent < minTwelfth) return false
 
-      // Experience range
-      if (cand.experienceYears < minExp || cand.experienceYears > maxExp) return false
+      // Experience Range
+      if (minExp > 0 && !isUnknownExp && cand.experienceYears < minExp) return false
+      if (maxExp < 10 && cand.experienceYears > maxExp) return false
 
-      // Graduation batch
-      if (selectedBatches.length > 0 && !selectedBatches.includes(cand.gradYear)) return false
-
-      // Location
-      if (selectedLocations.length > 0 && !selectedLocations.includes(cand.location)) return false
-
-      // Skills (synonym-aware matching!)
-      if (selectedSkills.length > 0) {
-        const hasAllSelected = selectedSkills.every((reqSkill) =>
-          hasSkillWithSynonyms(cand.skills, reqSkill, company.settings.skillSynonyms)
-        )
-        if (!hasAllSelected) return false
+      // City / Location
+      if (selectedCity !== 'All' && cand.location.toLowerCase() !== selectedCity.toLowerCase()) {
+        return false
       }
 
-      // Score
-      if (minScore > 0 && score < minScore) return false
+      // Graduation Batch
+      if (selectedBatch && cand.gradYear !== selectedBatch) return false
 
-      // Pipeline Stage
+      // Stage Filter
       if (selectedStages.length > 0 && !selectedStages.includes(stage)) return false
 
-      // Custom fields
-      for (const [cfId, val] of Object.entries(customFieldFilters)) {
-        if (val && String(cand.customFields[cfId]) !== val) {
-          return false
-        }
+      // SKILL FILTERS: ALL (AND), ANY (OR), NONE (NOT)
+      const candSkillsLower = cand.skills.map((s) => s.toLowerCase())
+
+      const skillsAll = skillFilters.filter((s) => s.mode === 'all')
+      if (skillsAll.length > 0) {
+        const hasAll = skillsAll.every((req) =>
+          candSkillsLower.some((s) => s.includes(req.name.toLowerCase()))
+        )
+        if (!hasAll) return false
+      }
+
+      const skillsAny = skillFilters.filter((s) => s.mode === 'any')
+      if (skillsAny.length > 0) {
+        const hasAny = skillsAny.some((req) =>
+          candSkillsLower.some((s) => s.includes(req.name.toLowerCase()))
+        )
+        if (!hasAny) return false
+      }
+
+      const skillsNone = skillFilters.filter((s) => s.mode === 'none')
+      if (skillsNone.length > 0) {
+        const hasNone = skillsNone.some((forbidden) =>
+          candSkillsLower.some((s) => s.includes(forbidden.name.toLowerCase()))
+        )
+        if (hasNone) return false
       }
 
       return true
@@ -280,19 +310,17 @@ export const CandidatesPage: React.FC = () => {
   }, [
     companyCandidates,
     candidateAppMap,
-    textSearch,
+    debouncedQuery,
     minCgpa,
     minTenth,
     minTwelfth,
     minExp,
     maxExp,
-    selectedBatches,
-    selectedLocations,
-    selectedSkills,
-    minScore,
+    selectedCity,
+    selectedBatch,
+    includeUnknown,
     selectedStages,
-    customFieldFilters,
-    company.settings.skillSynonyms,
+    skillFilters,
   ])
 
   // Sorting
@@ -361,47 +389,49 @@ export const CandidatesPage: React.FC = () => {
   }
 
   const handleBulkEmail = () => {
-    // Navigate to email composer with preloaded candidate IDs
     navigate(`/app/emails?recipientIds=${selectedCandidateIds.join(',')}`)
   }
 
+  // Compare Handler: Strictly enforce 2 to 3 candidates per plan!
   const handleBulkCompare = () => {
-    if (selectedCandidateIds.length > 4) {
-      toast.error('Compare supports up to 4 candidates at a time.')
+    if (selectedCandidateIds.length > 3) {
+      toast.error('Comparison is limited to a maximum of 3 candidates.')
+      return
+    }
+    if (selectedCandidateIds.length < 2) {
+      toast.error('Select at least 2 candidates to compare.')
       return
     }
     navigate(`/app/compare?candidateIds=${selectedCandidateIds.join(',')}`)
   }
 
-  const handleExportCSV = () => {
-    const rows = [
-      ['Name', 'Email', 'Phone', 'College', 'CGPA', 'Experience (Yrs)', 'Location', 'Skills', 'Match Score'],
-      ...filteredCandidates.map((c) => {
-        const score = candidateAppMap.get(c.id)?.matchScore || ''
-        return [
-          `"${c.name}"`,
-          `"${c.email}"`,
-          `"${c.phone}"`,
-          `"${c.college}"`,
-          c.cgpa,
-          c.experienceYears,
-          `"${c.location}"`,
-          `"${c.skills.join(', ')}"`,
-          score,
-        ]
-      }),
-    ]
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + rows.map((e) => e.join(',')).join('\n')
-    const encodedUri = encodeURI(csvContent)
-    const link = document.createElement('a')
-    link.setAttribute('href', encodedUri)
-    link.setAttribute('download', `${company.name.toLowerCase().replace(' ', '_')}_candidates.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    toast.success('Exported candidates to CSV')
+  const clearAllFilters = () => {
+    setTextSearch('')
+    setDebouncedQuery('')
+    setMinCgpa(0)
+    setMinTenth(0)
+    setMinTwelfth(0)
+    setSkillFilters([])
+    setMinExp(0)
+    setMaxExp(10)
+    setSelectedCity('All')
+    setSelectedBatch(null)
+    setIncludeUnknown(false)
+    setSelectedStages([])
+    setPage(1)
   }
+
+  const activeFilterCount =
+    (debouncedQuery ? 1 : 0) +
+    (minCgpa > 0 ? 1 : 0) +
+    (minTenth > 0 ? 1 : 0) +
+    (minTwelfth > 0 ? 1 : 0) +
+    skillFilters.length +
+    (minExp > 0 || maxExp < 10 ? 1 : 0) +
+    (selectedCity !== 'All' ? 1 : 0) +
+    (selectedBatch ? 1 : 0) +
+    (includeUnknown ? 1 : 0) +
+    selectedStages.length
 
   return (
     <div className="space-y-4">
@@ -439,47 +469,16 @@ export const CandidatesPage: React.FC = () => {
         </div>
       </Modal>
 
-      {/* Header & Quick Stats */}
+      {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-text">Candidate Directory</h1>
           <p className="text-xs text-muted mt-0.5">
-            {filteredCandidates.length} of {companyCandidates.length} candidates match current filters
+            {filteredCandidates.length} of {companyCandidates.length} talent profiles matched
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Saved Filters Dropdown */}
-          <div className="relative group">
-            <Button variant="outline" size="sm" leftIcon={<Bookmark className="w-3.5 h-3.5" />}>
-              Saved Presets
-            </Button>
-            <div className="hidden group-hover:block absolute right-0 mt-1 w-52 bg-white rounded-lg border border-border shadow-modal py-1 z-30">
-              <button
-                onClick={() => applyPreset('tier1_coders')}
-                className="w-full px-3 py-1.5 text-xs text-left hover:bg-gray-50 text-text"
-              >
-                Top Tier-1 Coders (8+ CGPA)
-              </button>
-              <button
-                onClick={() => applyPreset('immediate_freshers')}
-                className="w-full px-3 py-1.5 text-xs text-left hover:bg-gray-50 text-text"
-              >
-                2024-2025 Freshers (0-1y)
-              </button>
-              <button
-                onClick={() => applyPreset('high_matches')}
-                className="w-full px-3 py-1.5 text-xs text-left hover:bg-gray-50 text-text"
-              >
-                High Match Rate (80%+)
-              </button>
-            </div>
-          </div>
-
-          <Button variant="outline" size="sm" leftIcon={<Download className="w-3.5 h-3.5" />} onClick={handleExportCSV}>
-            Export CSV
-          </Button>
-
           {/* Table Column Chooser */}
           <div className="relative">
             <Button
@@ -491,12 +490,12 @@ export const CandidatesPage: React.FC = () => {
               Columns
             </Button>
             {showColumnChooser && (
-              <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg border border-border shadow-modal p-2.5 z-30 space-y-2 text-xs animate-in fade-in-0">
+              <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg border border-border shadow-modal p-2.5 z-30 space-y-2 text-xs">
                 <span className="font-bold text-muted uppercase text-[10px] block">
-                  Custom & Standard Columns
+                  Toggle Custom Columns
                 </span>
                 {company.settings.customFields.length === 0 ? (
-                  <p className="text-[11px] text-muted italic">No custom fields defined in Settings.</p>
+                  <p className="text-[11px] text-muted italic">No custom fields defined.</p>
                 ) : (
                   company.settings.customFields.map((cf) => (
                     <label key={cf.id} className="flex items-center gap-2 px-1 py-0.5 hover:bg-gray-50 rounded cursor-pointer text-text">
@@ -525,102 +524,109 @@ export const CandidatesPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Natural Language Search Bar */}
-      <div className="bg-white rounded-xl border border-border p-3 shadow-soft space-y-2">
+      {/* Search Bar & Active Filter Chips */}
+      <div className="bg-white rounded-xl border border-border p-3 shadow-soft space-y-2.5">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <Sparkles className="w-4 h-4 text-primary absolute left-3 top-2.5" />
+            <Search className="w-4 h-4 text-muted absolute left-3 top-2.5" />
             <input
               type="text"
-              value={nlSearch}
-              onChange={(e) => setNlSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleNaturalLanguageSearch(nlSearch)
-                }
-              }}
-              placeholder='Try Natural Language: "Python developers, 2025 grads, CGPA above 8, Delhi"'
+              value={textSearch}
+              onChange={(e) => setTextSearch(e.target.value)}
+              placeholder='Try Natural Language or search candidates by skill/college (e.g. "IIT Delhi", "Python", "Noida")...'
               className="w-full h-9 pl-9 pr-3 text-xs rounded-lg border border-border bg-gray-50/70 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/20 text-text"
             />
           </div>
           <Button
-            variant="primary"
+            variant="outline"
             size="sm"
-            onClick={() => handleNaturalLanguageSearch(nlSearch)}
+            onClick={() => setDebouncedQuery(textSearch)}
           >
             Parse Query
           </Button>
+          {textSearch && (
+            <Button variant="ghost" size="sm" onClick={() => { setTextSearch(''); setDebouncedQuery(''); }}>
+              Clear
+            </Button>
+          )}
         </div>
 
-        {/* Filter chips bar */}
+        {/* Active Filter Chips Bar */}
         {activeFilterCount > 0 && (
           <div className="flex items-center gap-1.5 flex-wrap pt-1 text-xs">
-            <span className="text-muted text-[11px] font-semibold mr-1">Active:</span>
+            <span className="text-muted text-[11px] font-semibold mr-1">Active Filters:</span>
+
+            {debouncedQuery && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-primary border border-indigo-200">
+                Query: "{debouncedQuery}"
+                <X className="w-3 h-3 cursor-pointer hover:opacity-75" onClick={() => setTextSearch('')} />
+              </span>
+            )}
 
             {minCgpa > 0 && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 text-primary border border-indigo-200">
                 CGPA ≥ {minCgpa}
-                <X className="w-3 h-3 cursor-pointer" onClick={() => setMinCgpa(0)} />
+                <X className="w-3 h-3 cursor-pointer hover:opacity-75" onClick={() => setMinCgpa(0)} />
               </span>
             )}
 
-            {selectedSkills.map((s) => (
+            {/* Skill chips with AND / OR / NOT badge */}
+            {skillFilters.map((s) => (
               <span
-                key={s}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200"
+                key={s.name}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-medium ${
+                  s.mode === 'all'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                    : s.mode === 'any'
+                    ? 'bg-indigo-50 text-indigo-800 border-indigo-300'
+                    : 'bg-rose-50 text-rose-800 border-rose-300'
+                }`}
               >
-                {s}
-                <X
-                  className="w-3 h-3 cursor-pointer"
-                  onClick={() => setSelectedSkills(selectedSkills.filter((sk) => sk !== s))}
-                />
+                <span>{s.name}</span>
+                <button
+                  type="button"
+                  title="Click to toggle: MUST HAVE (AND) -> NICE TO HAVE (OR) -> EXCLUDE (NOT)"
+                  onClick={() => toggleSkillMode(s.name)}
+                  className="px-1 py-0.2 rounded text-[9px] font-extrabold uppercase bg-white/80 shadow-xs cursor-pointer"
+                >
+                  {s.mode.toUpperCase()}
+                </button>
+                <X className="w-3 h-3 cursor-pointer hover:opacity-75" onClick={() => removeSkillFilter(s.name)} />
               </span>
             ))}
 
-            {selectedLocations.map((loc) => (
-              <span
-                key={loc}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200"
-              >
-                {loc}
-                <X
-                  className="w-3 h-3 cursor-pointer"
-                  onClick={() => setSelectedLocations(selectedLocations.filter((l) => l !== loc))}
-                />
+            {selectedCity !== 'All' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200">
+                City: {selectedCity}
+                <X className="w-3 h-3 cursor-pointer hover:opacity-75" onClick={() => setSelectedCity('All')} />
               </span>
-            ))}
+            )}
 
-            {selectedBatches.map((b) => (
-              <span
-                key={b}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 text-purple-800 border border-purple-200"
-              >
-                Batch {b}
-                <X
-                  className="w-3 h-3 cursor-pointer"
-                  onClick={() => setSelectedBatches(selectedBatches.filter((bt) => bt !== b))}
-                />
+            {selectedBatch && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-50 text-purple-800 border border-purple-200">
+                Batch: {selectedBatch}
+                <X className="w-3 h-3 cursor-pointer hover:opacity-75" onClick={() => setSelectedBatch(null)} />
               </span>
-            ))}
+            )}
 
-            {minScore > 0 && (
+            {includeUnknown && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-                Score ≥ {minScore}%
-                <X className="w-3 h-3 cursor-pointer" onClick={() => setMinScore(0)} />
+                Include Unknowns
+                <X className="w-3 h-3 cursor-pointer hover:opacity-75" onClick={() => setIncludeUnknown(false)} />
               </span>
             )}
 
             <button
               onClick={clearAllFilters}
-              className="text-[11px] text-rose-600 hover:underline ml-2 font-medium"
+              className="text-[11px] text-rose-600 hover:underline ml-2 font-medium flex items-center gap-1"
             >
-              Clear all
+              <RotateCcw className="w-3 h-3" /> Reset all
             </button>
           </div>
         )}
       </div>
 
-      {/* Main Content Layout (Sidebar + Table) */}
+      {/* Main Content Area: Sidebar + Candidates Table */}
       <div className="flex gap-4 items-start">
         {/* FILTER SIDEBAR */}
         {showFilterSidebar && (
@@ -635,15 +641,20 @@ export const CandidatesPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Keyword / Name Search */}
-            <div>
-              <label className="block text-xs font-semibold text-text mb-1">Keywords</label>
-              <Input
-                value={textSearch}
-                onChange={(e) => setTextSearch(e.target.value)}
-                placeholder="Name, college, skill..."
-                className="h-8 text-xs"
-              />
+            {/* Toggle: Include Unknowns */}
+            <div className="p-2.5 rounded-lg bg-gray-50 border border-border space-y-1">
+              <label className="flex items-center justify-between cursor-pointer">
+                <span className="text-xs font-semibold text-text">Include Unknown Values</span>
+                <input
+                  type="checkbox"
+                  checked={includeUnknown}
+                  onChange={(e) => setIncludeUnknown(e.target.checked)}
+                  className="rounded text-primary focus:ring-primary h-4 w-4 cursor-pointer"
+                />
+              </label>
+              <p className="text-[10px] text-muted leading-tight">
+                Includes candidates with unparsed CGPA or zero stated experience.
+              </p>
             </div>
 
             {/* Minimum CGPA */}
@@ -663,7 +674,7 @@ export const CandidatesPage: React.FC = () => {
               />
             </div>
 
-            {/* Minimum 10th & 12th % */}
+            {/* Minimum 10th & 12th Board % */}
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-[11px] font-semibold text-text mb-1">Min 10th %</label>
@@ -691,100 +702,93 @@ export const CandidatesPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Minimum Match Score */}
+            {/* Skills Picker with Mode (AND / OR / NOT) */}
             <div>
-              <div className="flex justify-between text-xs font-semibold text-text mb-1">
-                <span>Min Match Score</span>
-                <span className="text-primary">{minScore > 0 ? `${minScore}%` : 'Any'}</span>
+              <label className="block text-xs font-semibold text-text mb-1">
+                Competency & Skills Filter
+              </label>
+              <p className="text-[10px] text-muted mb-2">
+                Click a skill to add. Toggle chip for <strong>AND</strong> (must have), <strong>OR</strong> (any), or <strong>NOT</strong> (exclude).
+              </p>
+              <div className="flex flex-wrap gap-1 max-h-36 overflow-y-auto p-1 border border-border rounded-lg bg-gray-50/50">
+                {availableSkills.map((skill) => {
+                  const existing = skillFilters.find((s) => s.name.toLowerCase() === skill.toLowerCase())
+                  return (
+                    <button
+                      key={skill}
+                      type="button"
+                      onClick={() => {
+                        if (existing) {
+                          toggleSkillMode(skill)
+                        } else {
+                          addSkillFilter(skill, 'all')
+                        }
+                      }}
+                      className={`px-2 py-0.5 rounded text-xs transition-colors flex items-center gap-1 ${
+                        existing
+                          ? existing.mode === 'all'
+                            ? 'bg-emerald-600 text-white font-bold'
+                            : existing.mode === 'any'
+                            ? 'bg-indigo-600 text-white font-bold'
+                            : 'bg-rose-600 text-white font-bold'
+                          : 'bg-white border border-border text-muted hover:bg-gray-100 hover:text-text'
+                      }`}
+                    >
+                      <span>{skill}</span>
+                      {existing && (
+                        <span className="text-[8px] uppercase tracking-tighter opacity-80">
+                          {existing.mode}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
-              <input
-                type="range"
-                min="0"
-                max="95"
-                step="5"
-                value={minScore}
-                onChange={(e) => setMinScore(parseInt(e.target.value, 10))}
-                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary"
-              />
             </div>
 
-            {/* Experience Slider */}
+            {/* Experience Range */}
             <div>
               <div className="flex justify-between text-xs font-semibold text-text mb-1">
-                <span>Experience</span>
-                <span className="text-primary">{minExp} - {maxExp}+ yrs</span>
+                <span>Experience (Years)</span>
+                <span className="text-primary">{minExp} - {maxExp}y</span>
               </div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <input
                   type="range"
                   min="0"
-                  max="8"
+                  max="10"
                   value={minExp}
-                  onChange={(e) => setMinExp(parseInt(e.target.value, 10))}
+                  onChange={(e) => setMinExp(parseFloat(e.target.value))}
                   className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary"
                 />
               </div>
             </div>
 
-            {/* Skills selection */}
+            {/* City / Location Picker */}
             <div>
-              <label className="block text-xs font-semibold text-text mb-1">Skills (Synonym-Aware)</label>
-              <div className="max-h-32 overflow-y-auto space-y-1 pr-1 border border-border rounded-lg p-1.5 bg-gray-50/50">
-                {availableSkills.slice(0, 16).map((skill) => (
-                  <label key={skill} className="flex items-center gap-2 text-xs cursor-pointer hover:text-primary">
-                    <input
-                      type="checkbox"
-                      checked={selectedSkills.includes(skill)}
-                      onChange={(e) => {
-                        if (e.target.checked) setSelectedSkills([...selectedSkills, skill])
-                        else setSelectedSkills(selectedSkills.filter((s) => s !== skill))
-                      }}
-                      className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
-                    />
-                    <span className="truncate">{skill}</span>
-                  </label>
+              <label className="block text-xs font-semibold text-text mb-1">Candidate City</label>
+              <select
+                value={selectedCity}
+                onChange={(e) => setSelectedCity(e.target.value)}
+                className="w-full h-8 px-2 text-xs rounded-lg border border-border bg-white text-text"
+              >
+                {availableCities.map((c) => (
+                  <option key={c} value={c}>{c}</option>
                 ))}
-              </div>
+              </select>
             </div>
 
-            {/* Locations */}
-            <div>
-              <label className="block text-xs font-semibold text-text mb-1">Locations</label>
-              <div className="space-y-1">
-                {availableLocations.map((loc) => (
-                  <label key={loc} className="flex items-center gap-2 text-xs cursor-pointer hover:text-primary">
-                    <input
-                      type="checkbox"
-                      checked={selectedLocations.includes(loc)}
-                      onChange={(e) => {
-                        if (e.target.checked) setSelectedLocations([...selectedLocations, loc])
-                        else setSelectedLocations(selectedLocations.filter((l) => l !== loc))
-                      }}
-                      className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
-                    />
-                    <span>{loc}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Batches */}
+            {/* Graduation Batch */}
             <div>
               <label className="block text-xs font-semibold text-text mb-1">Graduation Batch</label>
               <div className="flex flex-wrap gap-1">
                 {availableBatches.map((b) => (
                   <button
                     key={b}
-                    onClick={() => {
-                      if (selectedBatches.includes(b)) {
-                        setSelectedBatches(selectedBatches.filter((batch) => batch !== b))
-                      } else {
-                        setSelectedBatches([...selectedBatches, b])
-                      }
-                    }}
+                    onClick={() => setSelectedBatch(selectedBatch === b ? null : b)}
                     className={`px-2 py-0.5 rounded text-xs border ${
-                      selectedBatches.includes(b)
-                        ? 'bg-primary text-white border-primary'
+                      selectedBatch === b
+                        ? 'bg-primary text-white border-primary font-bold'
                         : 'bg-white text-muted border-border hover:bg-gray-50'
                     }`}
                   >
@@ -798,7 +802,7 @@ export const CandidatesPage: React.FC = () => {
 
         {/* CANDIDATES TABLE AREA */}
         <div className="flex-1 min-w-0 space-y-3">
-          {/* Bulk actions toolbar */}
+          {/* Bulk Selection Bar */}
           {selectedCandidateIds.length > 0 && (
             <div className="flex items-center justify-between p-3 rounded-xl bg-indigo-50 border border-indigo-200 text-xs animate-in fade-in-0 duration-200">
               <span className="font-semibold text-indigo-900">
@@ -821,11 +825,17 @@ export const CandidatesPage: React.FC = () => {
                     </Button>
                   </>
                 )}
-                {selectedCandidateIds.length >= 2 && selectedCandidateIds.length <= 4 && (
-                  <Button variant="secondary" size="sm" leftIcon={<Scale className="w-3 h-3" />} onClick={handleBulkCompare}>
-                    Compare ({selectedCandidateIds.length})
-                  </Button>
-                )}
+
+                {/* Compare Button: Strictly for 2 to 3 candidates */}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={<Scale className="w-3 h-3" />}
+                  onClick={handleBulkCompare}
+                  disabled={selectedCandidateIds.length < 2 || selectedCandidateIds.length > 3}
+                >
+                  Compare ({selectedCandidateIds.length})
+                </Button>
               </div>
             </div>
           )}
@@ -883,6 +893,8 @@ export const CandidatesPage: React.FC = () => {
                       </div>
                     </th>
                     <th className="p-3">Location</th>
+
+                    {/* Custom Fields Headers */}
                     {company.settings.customFields
                       .filter((cf) => visibleColumns[cf.id])
                       .map((cf) => (
@@ -890,6 +902,7 @@ export const CandidatesPage: React.FC = () => {
                           {cf.name}
                         </th>
                       ))}
+
                     <th
                       className="p-3 cursor-pointer hover:text-text"
                       onClick={() => {
@@ -909,14 +922,16 @@ export const CandidatesPage: React.FC = () => {
                 <tbody className="divide-y divide-border">
                   {paginatedCandidates.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-10 text-center text-muted">
-                        No candidates found matching the selected filters.
+                      <td colSpan={10} className="p-10 text-center text-muted">
+                        No candidates match the specified filter criteria.
                       </td>
                     </tr>
                   ) : (
                     paginatedCandidates.map((candidate) => {
                       const app = candidateAppMap.get(candidate.id)
                       const isSelected = selectedCandidateIds.includes(candidate.id)
+                      const isLowConfidence = candidate.parseConfidence < 70
+                      const isDuplicate = duplicateCandidateIds.has(candidate.id)
 
                       return (
                         <tr
@@ -945,11 +960,25 @@ export const CandidatesPage: React.FC = () => {
                                 isBlind={company.settings.blindMode}
                               />
                               <div>
-                                <div className="font-bold text-text text-xs hover:text-primary">
-                                  {company.settings.blindMode ? 'Candidate ' + candidate.id.slice(-4) : candidate.name}
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-text text-xs hover:text-primary">
+                                    {company.settings.blindMode ? 'Candidate #' + candidate.id.slice(-4) : candidate.name}
+                                  </span>
+                                  {/* Duplicate Badge */}
+                                  {isDuplicate && (
+                                    <span className="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 text-[9px] font-bold border border-amber-300">
+                                      Duplicate
+                                    </span>
+                                  )}
+                                  {/* Low Confidence Badge */}
+                                  {isLowConfidence && (
+                                    <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 text-[9px] font-semibold border border-amber-200">
+                                      ⚠️ {candidate.parseConfidence}% Conf
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-[11px] text-muted truncate max-w-[170px]">
-                                  {company.settings.blindMode && company.settings.hiddenFields.includes('college')
+                                  {company.settings.blindMode
                                     ? '[Hidden College]'
                                     : candidate.college}
                                 </div>
@@ -957,9 +986,11 @@ export const CandidatesPage: React.FC = () => {
                             </div>
                           </td>
 
-                          {/* Academic CGPA */}
-                          <td className="p-3">
-                            <div className="font-semibold text-text">{candidate.cgpa} / 10</div>
+                          {/* Academic CGPA (with amber highlight if low-confidence or missing) */}
+                          <td className={`p-3 ${candidate.cgpa <= 0 ? 'bg-amber-50/40' : ''}`}>
+                            <div className="font-semibold text-text">
+                              {candidate.cgpa > 0 ? `${candidate.cgpa} / 10` : <span className="text-amber-700 italic">Unknown</span>}
+                            </div>
                             <div className="text-[10px] text-muted">
                               10th: {candidate.tenthPercent}% • 12th: {candidate.twelfthPercent}%
                             </div>
@@ -969,7 +1000,9 @@ export const CandidatesPage: React.FC = () => {
                           <td className="p-3">
                             <div className="flex flex-wrap gap-1 max-w-[200px]">
                               {candidate.skills.slice(0, 3).map((s) => (
-                                <SkillChip key={s} name={s} size="sm" status="neutral" />
+                                <span key={s} className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 text-gray-700 font-medium">
+                                  {s}
+                                </span>
                               ))}
                               {candidate.skills.length > 3 && (
                                 <span className="text-[10px] text-muted self-center">
@@ -979,10 +1012,12 @@ export const CandidatesPage: React.FC = () => {
                             </div>
                           </td>
 
-                          {/* Experience */}
-                          <td className="p-3">
+                          {/* Experience (with amber highlight if unknown) */}
+                          <td className={`p-3 ${candidate.experienceYears === undefined ? 'bg-amber-50/40' : ''}`}>
                             <div className="font-medium text-text">
-                              {candidate.experienceYears === 0 ? 'Fresher' : `${candidate.experienceYears} yrs`}
+                              {candidate.experienceYears === 0
+                                ? 'Fresher'
+                                : `${candidate.experienceYears} yrs`}
                             </div>
                             <div className="text-[10px] text-muted">Batch {candidate.gradYear}</div>
                           </td>
@@ -1027,29 +1062,28 @@ export const CandidatesPage: React.FC = () => {
             </div>
 
             {/* Pagination footer */}
-            <div className="p-3 border-t border-border flex items-center justify-between bg-white text-xs text-muted">
+            <div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted bg-gray-50/50">
               <span>
-                Showing {(page - 1) * pageSize + 1} to{' '}
-                {Math.min(page * pageSize, sortedCandidates.length)} of {sortedCandidates.length}
+                Showing {sortedCandidates.length === 0 ? 0 : (page - 1) * pageSize + 1} to{' '}
+                {Math.min(page * pageSize, sortedCandidates.length)} of {sortedCandidates.length} entries
               </span>
-
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1">
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
-                  onClick={() => setPage(page - 1)}
                 >
                   Previous
                 </Button>
-                <span className="px-2 font-medium text-text">
+                <span className="px-2 text-xs font-semibold text-text">
                   Page {page} of {totalPages}
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={page >= totalPages}
-                  onClick={() => setPage(page + 1)}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
                 >
                   Next
                 </Button>

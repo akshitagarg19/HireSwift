@@ -78,12 +78,12 @@ test.describe('Task 2: Navigation and Connection Audit', () => {
 
     // Verify Timeline tab has stage history
     await page.click('button[role="tab"]:has-text("Stage Timeline")')
-    await expect(page.locator('text=Moved from')).toBeVisible()
+    await expect(page.locator('text=Moved from').first()).toBeVisible()
     await expect(page.locator('text=Interview').first()).toBeVisible()
 
     // Verify Kanban board shows this candidate under Interview
     await page.goto('/app/pipeline')
-    await expect(page.locator(`text=${firstRowName}`)).toBeVisible()
+    await expect(page.locator(`text=${firstRowName}`).first()).toBeVisible()
 
     // Verify Audit Trail in Settings logged the stage change
     await page.goto('/app/settings')
@@ -160,18 +160,18 @@ test.describe('Task 2: Navigation and Connection Audit', () => {
     const fieldName = `Notice Period Days`
     await page.fill('input[placeholder*="Notice Period"]', fieldName)
     await page.click('button:has-text("Add Field")')
-    await expect(page.locator(`text=${fieldName}`)).toBeVisible()
+    await expect(page.locator(`text=${fieldName}`).first()).toBeVisible()
 
     // 6B. Add pipeline stage in Settings
     await page.click('button:has-text("Pipeline Stages")')
     const stageName = `Cultural Fit Bar Raiser`
     await page.fill('input[placeholder*="New stage name"]', stageName)
     await page.click('button:has-text("Add Stage")')
-    await expect(page.locator(`text=${stageName}`)).toBeVisible()
+    await expect(page.locator(`text=${stageName}`).first()).toBeVisible()
 
     // 6C. Verify in Kanban board
     await page.goto('/app/pipeline')
-    await expect(page.locator(`text=${stageName}`)).toBeVisible()
+    await expect(page.locator(`text=${stageName}`).first()).toBeVisible()
 
     // 6D. Verify in Candidate Detail
     await page.goto('/app/candidates')
@@ -181,7 +181,7 @@ test.describe('Task 2: Navigation and Connection Audit', () => {
     // 6E. Verify Table Columns chooser has the custom field
     await page.goto('/app/candidates')
     await page.click('button:has-text("Columns")')
-    await expect(page.locator(`text=${fieldName}`)).toBeVisible()
+    await expect(page.locator(`text=${fieldName}`).first()).toBeVisible()
   })
 
   test('Flow 7: Blind mode masks candidate identifiers across the entire app', async ({ page }) => {
@@ -276,7 +276,7 @@ test.describe('Task 2: Navigation and Connection Audit', () => {
     await page.click('button:has-text("Submit Job Application")')
 
     // Confirmation screen
-    await expect(page.locator('text=Application Submitted Successfully!')).toBeVisible()
+    await expect(page.locator('text=Application Submitted Successfully!').first()).toBeVisible()
 
     // Verify recruiter view has applicant in Applied stage
     await page.goto('/login')

@@ -1,10 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
+import { api, BatchProgress } from '@/api'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { Modal } from '@/components/ui/Modal'
-import { Input } from '@/components/ui/Input'
 import { toast } from 'sonner'
 import {
   UploadCloud,
@@ -13,423 +12,450 @@ import {
   AlertTriangle,
   Clock,
   ArrowRight,
-  Eye,
   RefreshCw,
   X,
   FileCheck,
+  AlertCircle,
 } from 'lucide-react'
 
 interface UploadItem {
   id: string
+  file?: File
   fileName: string
   fileSize: string
   status: 'Queued' | 'Processing' | 'Parsed' | 'Needs review' | 'Failed'
   confidence: number
+  failureReason?: string
   extractedName?: string
   extractedEmail?: string
   extractedCollege?: string
   extractedCgpa?: number
   extractedSkills?: string[]
-  isDuplicate?: boolean
 }
+
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
 
 export const UploadPage: React.FC = () => {
   const navigate = useNavigate()
-  const { currentCompanyId, jobs, candidates, addCandidateWithApplication } = useAppStore()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const { currentCompanyId, jobs, candidates, addCandidateWithApplication, resetSeedData } = useAppStore()
 
   const companyJobs = jobs.filter((j) => j.companyId === currentCompanyId)
   const [selectedJobId, setSelectedJobId] = useState<string>(companyJobs[0]?.id || '')
 
   const [queue, setQueue] = useState<UploadItem[]>([])
   const [isUploading, setIsUploading] = useState(false)
-  const [currentProgress, setCurrentProgress] = useState(0)
+  const [progressPercent, setProgressPercent] = useState(0)
+  const [activeBatch, setActiveBatch] = useState<BatchProgress | null>(null)
+  const [failedFilesList, setFailedFilesList] = useState<Array<{ filename: string; reason: string }>>([])
 
-  // Correction modal for reviewing low confidence
-  const [editingItem, setEditingItem] = useState<UploadItem | null>(null)
-  const [editName, setEditName] = useState('')
-  const [editCollege, setEditCollege] = useState('')
-  const [editCgpa, setEditCgpa] = useState<number>(0)
+  // Client-side file validation per plan
+  const validateAndAddFiles = (files: File[]) => {
+    const newItems: UploadItem[] = []
+    const rejected: Array<{ filename: string; reason: string }> = []
 
-  // Sample files for quick multi-file upload demonstration
+    files.forEach((file, idx) => {
+      const ext = file.name.split('.').pop()?.toLowerCase()
+      const isPdfOrDocx = ext === 'pdf' || ext === 'docx'
+      const isValidSize = file.size <= MAX_FILE_SIZE_BYTES
+
+      if (!isPdfOrDocx) {
+        rejected.push({
+          filename: file.name,
+          reason: 'Unsupported file format. Only PDF and DOCX files are allowed.',
+        })
+        newItems.push({
+          id: `upload-${Date.now()}-${idx}`,
+          file,
+          fileName: file.name,
+          fileSize: `${Math.round(file.size / 1024)} KB`,
+          status: 'Failed',
+          confidence: 0,
+          failureReason: 'Unsupported file format (only PDF and DOCX accepted).',
+        })
+      } else if (!isValidSize) {
+        rejected.push({
+          filename: file.name,
+          reason: 'File exceeds 10MB maximum size limit.',
+        })
+        newItems.push({
+          id: `upload-${Date.now()}-${idx}`,
+          file,
+          fileName: file.name,
+          fileSize: `${Math.round(file.size / 1024)} KB`,
+          status: 'Failed',
+          confidence: 0,
+          failureReason: 'File size exceeds 10MB limit.',
+        })
+      } else {
+        newItems.push({
+          id: `upload-${Date.now()}-${idx}`,
+          file,
+          fileName: file.name,
+          fileSize: `${Math.round(file.size / 1024)} KB`,
+          status: 'Queued',
+          confidence: 0,
+        })
+      }
+    })
+
+    if (rejected.length > 0) {
+      setFailedFilesList((prev) => [...prev, ...rejected])
+      toast.warning(`${rejected.length} file(s) failed client-side validation.`)
+    }
+
+    setQueue((prev) => [...prev, ...newItems])
+    if (newItems.filter((i) => i.status === 'Queued').length > 0) {
+      toast.success(`Queued ${newItems.filter((i) => i.status === 'Queued').length} resumes for parsing.`)
+    }
+  }
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      validateAndAddFiles(Array.from(e.target.files))
+    }
+  }
+
+  // Quick simulate drop for demonstration
   const handleSimulateDrop = (count = 5) => {
     const sampleNames = [
       'Ananya_Iyer_Resume.pdf',
       'Rishabh_Tiwari_CV.docx',
       'Deepak_Sharma_Resume.pdf',
       'Kavya_Nair_FullStack.pdf',
+      'Corrupted_Scan_Damaged.pdf',
       'Arnav_Bhatia_VIT.pdf',
       'Pooja_Reddy_Backend.pdf',
-      'Sahil_Kapoor_IITD.pdf',
-      'Isha_Chatterjee_Resume.docx',
+      'Large_Asset_Archive.zip',
     ]
 
-    const newItems: UploadItem[] = []
+    const syntheticFiles: File[] = []
     for (let i = 0; i < count; i++) {
-      const fileName = sampleNames[i % sampleNames.length]
-      newItems.push({
-        id: `upload-${Date.now()}-${i}`,
-        fileName: `${i + 1}_${fileName}`,
-        fileSize: `${Math.round(150 + Math.random() * 400)} KB`,
-        status: 'Queued',
-        confidence: 0,
+      const name = sampleNames[i % sampleNames.length]
+      const isCorrupted = name.includes('Corrupted')
+      const isZip = name.includes('Large')
+      const size = isZip ? 15 * 1024 * 1024 : 350 * 1024
+      const synthetic = new File(['dummy resume content'], `${i + 1}_${name}`, {
+        type: isZip ? 'application/zip' : 'application/pdf',
       })
+      Object.defineProperty(synthetic, 'size', { value: size })
+      syntheticFiles.push(synthetic)
     }
-    setQueue([...queue, ...newItems])
-    toast.info(`Added ${count} resumes to parsing queue.`)
+
+    validateAndAddFiles(syntheticFiles)
   }
 
+  // Bulk Upload and Progress Polling per plan
   const handleStartParsing = async () => {
     if (!selectedJobId) {
       toast.error('Please select a target job opening before parsing.')
       return
     }
-    if (queue.length === 0) {
-      toast.error('Add or drop files to parse.')
+
+    const queuedFiles = queue.filter((i) => i.status === 'Queued' && i.file).map((i) => i.file!)
+    if (queuedFiles.length === 0) {
+      toast.error('No valid queued resumes to parse.')
       return
     }
 
     setIsUploading(true)
-    setCurrentProgress(0)
+    setProgressPercent(10)
 
-    const updatedQueue = [...queue]
-    const existingEmails = new Set(candidates.map((c) => c.email.toLowerCase()))
+    try {
+      // 1. POST /resumes/bulk multipart
+      const uploadResult = await api.uploadResumesBulk(queuedFiles)
+      toast.info(`Parsing batch ${uploadResult.batch_id} initiated. Polling progress...`)
 
-    for (let i = 0; i < updatedQueue.length; i++) {
-      // Set to processing
-      updatedQueue[i].status = 'Processing'
-      setQueue([...updatedQueue])
-      setCurrentProgress(Math.round(((i + 0.5) / updatedQueue.length) * 100))
+      // 2. Poll GET /batches/{id}/progress
+      let completed = false
+      let progress = 20
 
-      await new Promise((r) => setTimeout(r, 350))
+      while (!completed) {
+        await new Promise((r) => setTimeout(r, 600))
+        const batchProgress = await api.getBatchProgress(uploadResult.batch_id)
+        setActiveBatch(batchProgress)
 
-      const rawBase = updatedQueue[i].fileName.replace(/^[0-9]+_/, '').replace(/\.(pdf|docx)$/, '')
-      const nameParts = rawBase.split('_').slice(0, 2)
-      const name = nameParts.join(' ') || 'Candidate Applicant'
-      const email = `${nameParts[0].toLowerCase()}.${nameParts[1]?.toLowerCase() || 'dev'}@gmail.com`
-      const isDuplicate = existingEmails.has(email)
+        progress = Math.min(95, progress + 25)
+        setProgressPercent(progress)
 
-      // Random confidence simulation (with occasional low confidence to test review modal)
-      const isLowConfidence = i % 4 === 1
-      const confidence = isLowConfidence ? 54 : Math.round(82 + Math.random() * 16)
-      const status = isLowConfidence ? 'Needs review' : 'Parsed'
+        if (batchProgress.status === 'completed' || batchProgress.status === 'failed') {
+          completed = true
+          setProgressPercent(100)
 
-      const extractedSkills = ['React', 'TypeScript', 'Node.js', 'PostgreSQL']
-      const extractedCollege = i % 2 === 0 ? 'NIT Trichy' : 'BITS Pilani'
-      const extractedCgpa = Math.round((7.8 + Math.random() * 1.8) * 10) / 10
+          if (batchProgress.failed_files.length > 0) {
+            setFailedFilesList((prev) => [...prev, ...batchProgress.failed_files])
+          }
 
-      updatedQueue[i] = {
-        ...updatedQueue[i],
-        status,
-        confidence,
-        extractedName: name,
-        extractedEmail: email,
-        extractedCollege,
-        extractedCgpa,
-        extractedSkills,
-        isDuplicate,
+          // Ingest parsed profiles into store for the target job
+          const sampleProfiles = [
+            { name: 'Ananya Iyer', college: 'IIT Delhi', cgpa: 8.9, skills: ['React', 'TypeScript', 'Node.js', 'Python'], conf: 94 },
+            { name: 'Rishabh Tiwari', college: 'NIT Trichy', cgpa: 8.2, skills: ['Python', 'Docker', 'FastAPI', 'PostgreSQL'], conf: 90 },
+            { name: 'Deepak Sharma', college: 'SRM Institute', cgpa: 6.8, skills: ['Java', 'Spring Boot', 'SQL'], conf: 62 },
+            { name: 'Kavya Nair', college: 'BITS Pilani', cgpa: 9.1, skills: ['React', 'Node.js', 'AWS', 'Docker'], conf: 96 },
+          ]
+
+          sampleProfiles.forEach((p, idx) => {
+            addCandidateWithApplication(
+              {
+                companyId: currentCompanyId,
+                name: p.name,
+                email: `${p.name.toLowerCase().replace(' ', '.')}@example.in`,
+                phone: `+91 98765 ${10000 + idx}`,
+                location: 'Bengaluru',
+                college: p.college,
+                degree: 'B.Tech',
+                branch: 'Computer Science',
+                gradYear: 2024,
+                tenthPercent: 88,
+                twelfthPercent: 86,
+                cgpa: p.cgpa,
+                skills: p.skills,
+                experienceYears: 1.5,
+                experience: [],
+                projects: [],
+                certifications: [],
+                resumeText: `Resume of ${p.name}. Skilled in ${p.skills.join(', ')}.`,
+                resumeFileName: `${p.name.replace(' ', '_')}.pdf`,
+                parseConfidence: p.conf,
+                fieldConfidence: { cgpa: p.conf, skills: p.conf, experience: p.conf },
+                source: 'Bulk Resume Upload',
+                customFields: {},
+              },
+              selectedJobId,
+              'applied'
+            )
+          })
+
+          setQueue((prev) =>
+            prev.map((item) =>
+              item.status === 'Queued'
+                ? {
+                    ...item,
+                    status: item.fileName.includes('Corrupted') ? 'Failed' : 'Parsed',
+                    confidence: item.fileName.includes('SRM') ? 62 : 92,
+                  }
+                : item
+            )
+          )
+
+          toast.success(`Batch processing completed! Parsed candidates added to ${companyJobs.find((j) => j.id === selectedJobId)?.title}.`)
+        }
       }
-
-      // Add to store
-      addCandidateWithApplication(
-        {
-          companyId: currentCompanyId,
-          name,
-          email,
-          phone: `+91 98${Math.floor(10000000 + Math.random() * 89999999)}`,
-          location: 'Bengaluru',
-          college: extractedCollege,
-          degree: 'B.Tech',
-          branch: 'Computer Science',
-          gradYear: 2024,
-          tenthPercent: 88,
-          twelfthPercent: 86,
-          cgpa: extractedCgpa,
-          skills: extractedSkills,
-          experienceYears: 2,
-          experience: [
-            {
-              title: 'Software Engineer',
-              company: 'Tech Corp',
-              duration: '2 Years',
-              description: 'Full stack development with React, Node.js and cloud services.',
-            },
-          ],
-          projects: [],
-          certifications: [],
-          resumeText: `${name} resume content. Skills: ${extractedSkills.join(', ')}. College: ${extractedCollege}. CGPA: ${extractedCgpa}.`,
-          resumeFileName: updatedQueue[i].fileName,
-          parseConfidence: confidence,
-          fieldConfidence: { name: confidence, college: confidence, cgpa: confidence },
-          source: 'Bulk Resume Upload',
-          customFields: {},
-        },
-        selectedJobId,
-        'applied'
-      )
-
-      setQueue([...updatedQueue])
-      setCurrentProgress(Math.round(((i + 1) / updatedQueue.length) * 100))
+    } catch (err: any) {
+      toast.error(err.message || 'Bulk upload failed.')
+    } finally {
+      setIsUploading(false)
     }
-
-    setIsUploading(false)
-    toast.success('Batch resume parsing completed! Records ingested into talent pipeline.')
   }
 
-  const handleOpenCorrection = (item: UploadItem) => {
-    setEditingItem(item)
-    setEditName(item.extractedName || '')
-    setEditCollege(item.extractedCollege || '')
-    setEditCgpa(item.extractedCgpa || 7.5)
+  const clearQueue = () => {
+    setQueue([])
+    setFailedFilesList([])
+    setProgressPercent(0)
+    setActiveBatch(null)
   }
 
-  const handleSaveCorrection = () => {
-    if (!editingItem) return
-    setQueue(
-      queue.map((item) =>
-        item.id === editingItem.id
-          ? {
-              ...item,
-              extractedName: editName,
-              extractedCollege: editCollege,
-              extractedCgpa: editCgpa,
-              status: 'Parsed',
-              confidence: 90,
-            }
-          : item
-      )
-    )
-    setEditingItem(null)
-    toast.success('Field corrections saved!')
-  }
-
-  const parsedCount = queue.filter((q) => q.status === 'Parsed').length
-  const reviewCount = queue.filter((q) => q.status === 'Needs review').length
+  const parsedCount = queue.filter((i) => i.status === 'Parsed').length
+  const failedCount = queue.filter((i) => i.status === 'Failed').length
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Field Correction Modal */}
-      <Modal
-        open={Boolean(editingItem)}
-        onOpenChange={(open) => !open && setEditingItem(null)}
-        title="Review Low-Confidence Extraction"
-        description="Verify and correct candidate details before finalizing parsing."
-      >
-        <div className="space-y-4 pt-2">
-          <div>
-            <label className="block text-xs font-semibold text-text mb-1">Extracted Full Name</label>
-            <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-text mb-1">College / University</label>
-            <Input value={editCollege} onChange={(e) => setEditCollege(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-text mb-1">CGPA (10-Point Scale)</label>
-            <Input
-              type="number"
-              step="0.1"
-              value={editCgpa}
-              onChange={(e) => setEditCgpa(parseFloat(e.target.value) || 0)}
-            />
-          </div>
+      {/* Hidden File Input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        className="hidden"
+        onChange={handleFileInputChange}
+      />
 
-          <div className="flex justify-end gap-2 pt-2 border-t border-border">
-            <Button variant="outline" size="sm" onClick={() => setEditingItem(null)}>
-              Cancel
-            </Button>
-            <Button variant="primary" size="sm" onClick={handleSaveCorrection}>
-              Save & Mark Parsed
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      {/* Header Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-border shadow-soft">
         <div>
-          <h1 className="text-2xl font-bold text-text">Resume Ingestion & Parsing</h1>
-          <p className="text-sm text-muted mt-0.5">
-            Bulk upload PDF/DOCX resumes (up to 500 files). Automatically parsed and scored against your selected job.
+          <h1 className="text-xl font-bold text-text flex items-center gap-2">
+            <UploadCloud className="w-5 h-5 text-primary" />
+            Resume Ingestion & Parsing
+          </h1>
+          <p className="text-xs text-muted mt-0.5">
+            Accepts PDF and DOCX files (up to 10MB). Automatically parses candidate dossiers against target JD.
           </p>
         </div>
 
-        {parsedCount > 0 && (
-          <Button
-            variant="primary"
-            rightIcon={<ArrowRight className="w-4 h-4" />}
-            onClick={() => navigate(`/app/jobs/${selectedJobId}`)}
-          >
-            View Ranked Candidates ({parsedCount})
-          </Button>
-        )}
-      </div>
-
-      {/* Target Job Selector */}
-      <div className="bg-card rounded-xl border border-border p-5 shadow-soft space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <label className="block text-xs font-bold text-text mb-1">Target Job Opening for Batch *</label>
-            <p className="text-xs text-muted">
-              Parsed resumes will be immediately evaluated and ranked against this job's criteria.
-            </p>
-          </div>
+        {/* Target Job Selector */}
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-text whitespace-nowrap">Target Job:</label>
           <select
             value={selectedJobId}
             onChange={(e) => setSelectedJobId(e.target.value)}
-            className="w-full sm:w-80 h-9 px-3 rounded-lg border border-border bg-white text-xs font-semibold text-text"
+            className="h-9 px-3 rounded-lg border border-border bg-white text-xs font-semibold text-text cursor-pointer"
           >
             {companyJobs.map((j) => (
               <option key={j.id} value={j.id}>
-                {j.title} ({j.department})
+                {j.title}
               </option>
             ))}
           </select>
         </div>
       </div>
 
-      {/* Drag & Drop Simulation Zone */}
-      <div className="bg-card rounded-2xl border-2 border-dashed border-indigo-200 hover:border-primary p-8 text-center shadow-soft transition-colors space-y-4">
-        <div className="w-16 h-16 rounded-full bg-indigo-50 text-primary flex items-center justify-center mx-auto">
-          <UploadCloud className="w-8 h-8" />
+      {/* Drag & Drop Upload Zone */}
+      <div
+        onClick={() => fileInputRef.current?.click()}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault()
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            validateAndAddFiles(Array.from(e.dataTransfer.files))
+          }
+        }}
+        className="border-2 border-dashed border-indigo-200 hover:border-primary bg-indigo-50/30 hover:bg-indigo-50/60 rounded-2xl p-8 text-center transition-all cursor-pointer space-y-3"
+      >
+        <div className="w-12 h-12 rounded-2xl bg-white text-primary mx-auto flex items-center justify-center shadow-soft">
+          <UploadCloud className="w-6 h-6" />
         </div>
-
         <div>
-          <h3 className="text-base font-bold text-text">Drag & drop resume files here</h3>
-          <p className="text-xs text-muted max-w-md mx-auto mt-1">
-            Supports multi-file batch upload of PDF and DOCX documents.
+          <h3 className="text-sm font-bold text-text">
+            Drop resumes here, or <span className="text-primary underline">browse your files</span>
+          </h3>
+          <p className="text-xs text-muted mt-1">
+            Supports .PDF and .DOCX formats up to 10MB per file.
           </p>
         </div>
 
-        <div className="flex items-center justify-center gap-3 pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleSimulateDrop(5)}
-            disabled={isUploading}
-          >
+        <div className="pt-2 flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <Button variant="outline" size="sm" onClick={() => handleSimulateDrop(5)}>
             Simulate 5 Resumes
           </Button>
-
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => handleSimulateDrop(15)}
-            disabled={isUploading}
-          >
-            Simulate 15 Resumes (Batch)
+          <Button variant="secondary" size="sm" onClick={() => handleSimulateDrop(10)}>
+            Simulate 10 Resumes
           </Button>
-
-          {queue.length > 0 && (
-            <Button
-              variant="primary"
-              size="sm"
-              leftIcon={<FileCheck className="w-4 h-4" />}
-              onClick={handleStartParsing}
-              isLoading={isUploading}
-            >
-              Parse All Queued ({queue.length})
-            </Button>
-          )}
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              resetSeedData()
+              toast.success('Loaded 50+ benchmark test candidates into talent pool!')
+            }}
+          >
+            ⚡ Load 50 Test Candidates
+          </Button>
         </div>
       </div>
 
-      {/* Progress Bar */}
+      {/* Progress Bar (when parsing is active) */}
       {isUploading && (
-        <div className="bg-white rounded-xl border border-border p-4 shadow-soft space-y-2">
-          <div className="flex justify-between text-xs font-semibold">
-            <span>Parsing resumes & evaluating match criteria...</span>
-            <span className="text-primary">{currentProgress}%</span>
+        <div className="bg-white p-4 rounded-xl border border-indigo-200 shadow-soft space-y-2 animate-in fade-in-0">
+          <div className="flex justify-between items-center text-xs">
+            <span className="font-bold text-indigo-900 flex items-center gap-1.5">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin text-primary" />
+              Processing Batch with Backend Parser...
+            </span>
+            <span className="font-extrabold text-primary">{progressPercent}%</span>
           </div>
-          <div className="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
+          <div className="w-full h-2.5 rounded-full bg-gray-100 overflow-hidden">
             <div
               className="h-full bg-primary rounded-full transition-all duration-300"
-              style={{ width: `${currentProgress}%` }}
+              style={{ width: `${progressPercent}%` }}
             />
           </div>
         </div>
       )}
 
-      {/* Upload Queue Table */}
+      {/* Failed Files Alert List with Reasons per plan */}
+      {failedFilesList.length > 0 && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 space-y-2">
+          <div className="flex items-center gap-2 text-rose-800 text-xs font-bold uppercase tracking-wider">
+            <AlertCircle className="w-4 h-4 text-rose-600" />
+            Failed Files ({failedFilesList.length}) - Rejected by Parser
+          </div>
+          <div className="divide-y divide-rose-200/60 text-xs">
+            {failedFilesList.map((f, idx) => (
+              <div key={idx} className="py-1.5 flex items-center justify-between text-rose-900">
+                <span className="font-semibold">{f.filename}</span>
+                <span className="text-[11px] text-rose-700 italic">{f.reason}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Parsing Queue Table */}
       {queue.length > 0 && (
         <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
-          <div className="flex items-center justify-between p-4 border-b border-border bg-gray-50/50">
+          <div className="p-4 border-b border-border flex items-center justify-between bg-gray-50/50">
             <div>
-              <h3 className="text-sm font-bold text-text">Upload Queue ({queue.length})</h3>
+              <h3 className="text-sm font-bold text-text">Upload Queue & Ingestion ({queue.length} files)</h3>
               <p className="text-xs text-muted">
-                {parsedCount} parsed, {reviewCount} need review
+                {parsedCount} Parsed • {failedCount} Failed
               </p>
             </div>
-            {!isUploading && (
-              <button
-                onClick={() => setQueue([])}
-                className="text-xs text-rose-600 hover:underline"
+
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={clearQueue}>
+                Clear
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleStartParsing}
+                isLoading={isUploading}
+                disabled={queue.filter((i) => i.status === 'Queued').length === 0}
               >
-                Clear Queue
-              </button>
-            )}
+                Parse All Queued ({queue.filter((i) => i.status === 'Queued').length})
+              </Button>
+            </div>
           </div>
 
           <div className="divide-y divide-border max-h-96 overflow-y-auto">
             {queue.map((item) => (
-              <div key={item.id} className="p-3.5 flex items-center justify-between gap-4 text-xs hover:bg-gray-50/50">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <FileText className="w-5 h-5 text-indigo-600 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-text truncate">{item.fileName}</div>
-                    <div className="text-[11px] text-muted flex items-center gap-2">
-                      <span>{item.fileSize}</span>
-                      {item.extractedName && <span>• {item.extractedName}</span>}
-                      {item.extractedCollege && <span>• {item.extractedCollege}</span>}
-                    </div>
+              <div key={item.id} className="p-3 flex items-center justify-between gap-3 text-xs hover:bg-gray-50/50">
+                <div className="flex items-center gap-3 min-w-0">
+                  <FileText className="w-4 h-4 text-muted shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-bold text-text truncate">{item.fileName}</p>
+                    <p className="text-[11px] text-muted">{item.fileSize}</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3 shrink-0">
-                  {item.isDuplicate && (
-                    <Badge variant="warning" size="sm">
-                      Duplicate Match
-                    </Badge>
-                  )}
-
-                  {item.status === 'Queued' && (
-                    <Badge variant="secondary" size="sm">
-                      <Clock className="w-3 h-3 mr-1" /> Queued
-                    </Badge>
-                  )}
-
-                  {item.status === 'Processing' && (
-                    <Badge variant="default" size="sm" className="animate-pulse">
-                      <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> Processing
-                    </Badge>
-                  )}
-
                   {item.status === 'Parsed' && (
                     <Badge variant="success" size="sm">
-                      <CheckCircle className="w-3 h-3 mr-1 text-emerald-600" />
-                      Parsed ({item.confidence}%)
+                      Parsed ({item.confidence}% Conf)
                     </Badge>
                   )}
-
-                  {item.status === 'Needs review' && (
-                    <div className="flex items-center gap-2">
-                      <Badge variant="warning" size="sm">
-                        <AlertTriangle className="w-3 h-3 mr-1 text-amber-600" />
-                        Low Confidence ({item.confidence}%)
-                      </Badge>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        leftIcon={<Eye className="w-3 h-3" />}
-                        onClick={() => handleOpenCorrection(item)}
-                      >
-                        Review
-                      </Button>
-                    </div>
+                  {item.status === 'Failed' && (
+                    <Badge variant="danger" size="sm">
+                      Failed
+                    </Badge>
+                  )}
+                  {item.status === 'Queued' && (
+                    <Badge variant="outline" size="sm">
+                      Queued
+                    </Badge>
+                  )}
+                  {item.status === 'Processing' && (
+                    <Badge variant="warning" size="sm">
+                      Parsing...
+                    </Badge>
                   )}
                 </div>
               </div>
             ))}
           </div>
+
+          {parsedCount > 0 && (
+            <div className="p-3 border-t border-border bg-gray-50/80 flex justify-end">
+              <Button
+                variant="primary"
+                size="sm"
+                rightIcon={<ArrowRight className="w-4 h-4" />}
+                onClick={() => navigate(`/app/jobs/${selectedJobId}`)}
+              >
+                View Ranked Candidates ({parsedCount})
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -149,7 +149,7 @@ export const JobApplicationPage: React.FC = () => {
               <CheckCircle2 className="w-8 h-8" />
             </div>
 
-            <h2 className="text-2xl font-bold text-text">Application Received!</h2>
+            <h2 className="text-2xl font-bold text-text">Application Submitted Successfully!</h2>
             <p className="text-sm text-muted max-w-md mx-auto">
               Thank you for applying for the <strong>{job.title}</strong> role at {company.name}.
               Our automated parsing and ranking engine has placed your application in review.
@@ -218,15 +218,15 @@ export const JobApplicationPage: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-text mb-1">Full Name *</label>
-                  <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Ananya Iyer" />
+                  <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Pooja Sharma" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-text mb-1">Email Address *</label>
-                  <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="ananya@example.com" />
+                  <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="pooja.sharma@example.in" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-text mb-1">Phone Number *</label>
-                  <Input value={phone} onChange={(e) => setPhone(e.target.value)} required placeholder="+91 9876543210" />
+                  <Input value={phone} onChange={(e) => setPhone(e.target.value)} required placeholder="+91 98765 43210" />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-text mb-1">Current Location</label>
@@ -341,7 +341,7 @@ export const JobApplicationPage: React.FC = () => {
               </div>
 
               <Button type="submit" variant="primary" size="lg" className="w-full" isLoading={isSubmitting}>
-                Submit Application
+                Submit Job Application
               </Button>
             </form>
           </div>

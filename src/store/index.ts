@@ -48,6 +48,7 @@ export interface AppStore {
 
   // Tenant & Auth actions
   switchCompany: (companyId: string) => void;
+  switchRole: (role: User['role']) => void;
   setCurrentUser: (user: User | null) => void;
   login: (email: string) => boolean;
   logout: () => void;
@@ -123,6 +124,16 @@ export const useAppStore = create<AppStore>()(
           currentCompanyId: companyId,
           currentUser: matchingUser,
         })
+      },
+
+      switchRole: (role: User['role']) => {
+        const currentUser = get().currentUser
+        if (!currentUser) return
+        const updated = { ...currentUser, role }
+        set((state) => ({
+          currentUser: updated,
+          users: state.users.map((u) => (u.id === currentUser.id ? updated : u)),
+        }))
       },
 
       setCurrentUser: (user: User | null) => set({ currentUser: user }),
@@ -311,16 +322,17 @@ export const useAppStore = create<AppStore>()(
           const targetJob = updatedJobs.find((j) => j.id === jobId)
           let updatedApplications = state.applications
 
-          // Re-score applications if requirements changed
-          if (targetJob && updates.requirements) {
+          // Re-score applications if requirements or job-specific scoring weights changed
+          if (targetJob && (updates.requirements || updates.scoringWeights)) {
             const company = state.companies.find((c) => c.id === targetJob.companyId)
             const candMap = new Map(state.candidates.map((c) => [c.id, c]))
             if (company) {
+              const effectiveWeights = targetJob.scoringWeights || company.settings.scoringWeights
               updatedApplications = state.applications.map((app) => {
                 if (app.jobId !== jobId) return app
                 const cand = candMap.get(app.candidateId)
                 if (!cand) return app
-                const match = matchScore(cand, targetJob, company.settings.scoringWeights, company.settings.skillSynonyms)
+                const match = matchScore(cand, targetJob, effectiveWeights, company.settings.skillSynonyms)
                 return {
                   ...app,
                   matchScore: match.score,
@@ -532,9 +544,21 @@ export const useAppStore = create<AppStore>()(
           reason,
         }
 
+        const candidate = state.candidates.find((c) => c.id === app.candidateId)
+        const candName = candidate ? candidate.name : 'Candidate'
+        const newAuditLog: AuditLog = {
+          id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          companyId: app.companyId,
+          action: 'Stage Changed',
+          actorName: `${state.currentUser?.name || 'Recruiter'} (${state.currentUser?.role || 'Recruiter'})`,
+          details: `Moved ${candName} from ${oldStage} to ${newStage}${reason ? ` (${reason})` : ''}`,
+          timestamp: new Date().toISOString(),
+        }
+
         set((s) => ({
           applications: s.applications.map((a) => (a.id === applicationId ? { ...a, stage: newStage } : a)),
           stageHistories: [newHistory, ...s.stageHistories],
+          auditLogs: [newAuditLog, ...s.auditLogs],
         }))
       },
 
@@ -543,6 +567,8 @@ export const useAppStore = create<AppStore>()(
         const targetIds = new Set(applicationIds)
         const timestamp = new Date().toISOString()
         const newHistories: StageHistory[] = []
+        const newAuditLogs: AuditLog[] = []
+        const candMap = new Map(state.candidates.map((c) => [c.id, c]))
 
         const updatedApps = state.applications.map((app) => {
           if (!targetIds.has(app.id)) return app
@@ -556,12 +582,23 @@ export const useAppStore = create<AppStore>()(
             at: timestamp,
             reason,
           })
+
+          newAuditLogs.push({
+            id: `audit-${Date.now()}-${app.id}`,
+            companyId: app.companyId,
+            action: 'Bulk Stage Changed',
+            actorName: `${state.currentUser?.name || 'Recruiter'} (${state.currentUser?.role || 'Recruiter'})`,
+            details: `Moved ${candMap.get(app.candidateId)?.name || 'Candidate'} to ${newStage}${reason ? ` (${reason})` : ''}`,
+            timestamp,
+          })
+
           return { ...app, stage: newStage }
         })
 
         set((s) => ({
           applications: updatedApps,
           stageHistories: [...newHistories, ...s.stageHistories],
+          auditLogs: [...newAuditLogs, ...s.auditLogs],
         }))
       },
 

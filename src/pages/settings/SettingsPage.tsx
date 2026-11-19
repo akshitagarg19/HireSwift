@@ -24,6 +24,7 @@ import {
   Download,
 } from 'lucide-react'
 import { Role, CustomFieldType } from '@/types'
+import { canManageSettings } from '@/lib/permissions'
 
 export const SettingsPage: React.FC = () => {
   const {
@@ -44,6 +45,7 @@ export const SettingsPage: React.FC = () => {
   const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
   const companyUsers = users.filter((u) => u.companyId === currentCompanyId)
   const companyAuditLogs = auditLogs.filter((a) => a.companyId === currentCompanyId)
+  const isAdmin = canManageSettings(currentUser?.role)
 
   const [activeSection, setActiveSection] = useState<
     'company' | 'team' | 'weights' | 'pipeline' | 'fields' | 'synonyms' | 'privacy' | 'audit'
@@ -87,12 +89,20 @@ export const SettingsPage: React.FC = () => {
   // Handlers
   const handleSaveCompanyProfile = (e: React.FormEvent) => {
     e.preventDefault()
+    if (!isAdmin) {
+      toast.error('Admin role required to update organization settings.')
+      return
+    }
     updateCompany(company.id, { name: compName, industry: compIndustry })
     toast.success('Company profile updated')
   }
 
   const handleInviteSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (!isAdmin) {
+      toast.error('Admin role required to invite teammates.')
+      return
+    }
     if (!inviteName || !inviteEmail) {
       toast.error('Fill in all fields')
       return
@@ -105,6 +115,10 @@ export const SettingsPage: React.FC = () => {
   }
 
   const handleApplyWeightPreset = (preset: 'fresher' | 'experienced' | 'balanced') => {
+    if (!isAdmin) {
+      toast.error('Admin role required to change scoring weights.')
+      return
+    }
     let presetWeights = { skills: 45, experience: 30, education: 10, semantic: 15 }
     if (preset === 'fresher') {
       presetWeights = { skills: 20, experience: 5, education: 60, semantic: 15 }
@@ -119,6 +133,10 @@ export const SettingsPage: React.FC = () => {
   }
 
   const handleSaveWeights = () => {
+    if (!isAdmin) {
+      toast.error('Admin role required to change scoring weights.')
+      return
+    }
     updateCompanySettings(company.id, {
       scoringWeights: weights,
       learnFromDecisions: learnDecisions,
@@ -127,6 +145,10 @@ export const SettingsPage: React.FC = () => {
   }
 
   const handleAddStage = () => {
+    if (!isAdmin) {
+      toast.error('Admin role required to modify pipeline stages.')
+      return
+    }
     if (!newStageName.trim()) return
     const newStage = {
       id: `stage-${Date.now()}`,
@@ -141,6 +163,10 @@ export const SettingsPage: React.FC = () => {
   }
 
   const handleDeleteStage = (stageId: string) => {
+    if (!isAdmin) {
+      toast.error('Admin role required to modify pipeline stages.')
+      return
+    }
     if (stages.length <= 3) {
       toast.error('Pipeline requires at least 3 stages.')
       return
@@ -152,6 +178,10 @@ export const SettingsPage: React.FC = () => {
   }
 
   const handleAddCustomField = () => {
+    if (!isAdmin) {
+      toast.error('Admin role required to add custom fields.')
+      return
+    }
     if (!newFieldName.trim()) return
     const newField = {
       id: `cf-${Date.now()}`,
@@ -166,6 +196,10 @@ export const SettingsPage: React.FC = () => {
   }
 
   const handleAddSynonymGroup = () => {
+    if (!isAdmin) {
+      toast.error('Admin role required to modify synonyms.')
+      return
+    }
     if (!newCanonical.trim() || !newSynonymsInput.trim()) return
     const synList = newSynonymsInput
       .split(',')
@@ -206,6 +240,19 @@ export const SettingsPage: React.FC = () => {
         confirmText="Reset Everything"
         onConfirm={handleConfirmReset}
       />
+
+      {/* Role Notice Banner */}
+      {!isAdmin && (
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center justify-between shadow-soft">
+          <div className="flex items-center gap-2.5">
+            <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              <strong>Read-Only Workspace Settings:</strong> You are viewing organization settings as <strong>{currentUser?.role || 'Viewer'}</strong>. Admin privileges are required to modify scoring weights, custom fields, and pipeline configurations.
+            </span>
+          </div>
+          <Badge variant="warning" size="sm">Read-Only</Badge>
+        </div>
+      )}
 
       {/* Invite Member Modal */}
       <Modal
@@ -601,8 +648,70 @@ export const SettingsPage: React.FC = () => {
 
           {/* 7. DATA & PRIVACY */}
           {activeSection === 'privacy' && (
-            <div className="bg-card rounded-xl border border-border p-6 shadow-soft space-y-4">
-              <h2 className="text-base font-bold text-text">Data Retention & Compliance</h2>
+            <div className="bg-card rounded-xl border border-border p-6 shadow-soft space-y-6">
+              <div>
+                <h2 className="text-base font-bold text-text">Data Privacy, Compliance & Anonymization</h2>
+                <p className="text-xs text-muted">Configure fair hiring controls, anonymization rules, and DPDP data retention policies.</p>
+              </div>
+
+              {/* Blind Screening Toggle Card */}
+              <div className="p-4 rounded-xl border border-border bg-gray-50/70 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-bold text-text flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-amber-600" />
+                      Blind Screening Mode
+                    </h3>
+                    <p className="text-xs text-muted mt-0.5 max-w-lg">
+                      Mask candidate names, colleges, gender, and personal identifiers across all candidate views, Kanban cards, and dossiers to prevent unconscious bias.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={company.settings.blindMode}
+                    onClick={() => {
+                      if (!isAdmin) {
+                        toast.error('Admin role required to change blind mode settings.')
+                        return
+                      }
+                      updateCompanySettings(company.id, { blindMode: !company.settings.blindMode })
+                      toast.success(
+                        `Blind screening mode ${!company.settings.blindMode ? 'ACTIVATED' : 'DEACTIVATED'} across the workspace.`
+                      )
+                    }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
+                      company.settings.blindMode ? 'bg-primary' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        company.settings.blindMode ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {company.settings.blindMode && (
+                  <div className="pt-2 border-t border-border space-y-1.5 text-xs">
+                    <span className="font-semibold text-muted text-[11px] block">Active Anonymization Rules:</span>
+                    <div className="flex flex-wrap gap-2">
+                      <span className="px-2 py-1 rounded bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium">
+                        Names masked: Candidate #XXXX
+                      </span>
+                      <span className="px-2 py-1 rounded bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium">
+                        Colleges: [Hidden College]
+                      </span>
+                      <span className="px-2 py-1 rounded bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium">
+                        Cities: [Hidden City]
+                      </span>
+                      <span className="px-2 py-1 rounded bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium">
+                        Avatars: Generic neutral initials
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div>
                 <div className="flex justify-between text-xs font-semibold mb-1">

@@ -54,6 +54,10 @@ export const DashboardPage: React.FC = () => {
   const avgShortlistDays = 2.4
 
   // Attention Items
+  const needsReviewCount = companyApplications.filter((a) => a.stage === 'applied').length
+  const stalledInterviewCount = companyApplications.filter((a) => a.stage === 'interview').length
+  const pendingOffersCount = companyApplications.filter((a) => a.stage === 'offer').length
+
   const pendingDuplicates = duplicateGroups.filter(
     (g) => g.companyId === currentCompanyId && g.status === 'Pending'
   )
@@ -190,53 +194,101 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Needs Attention Alert Strip */}
-      {(pendingDuplicates.length > 0 || lowConfidenceParses.length > 0) && (
-        <div className="bg-card rounded-xl border border-amber-200 p-4 shadow-soft space-y-3">
-          <div className="flex items-center gap-2 text-xs font-bold text-amber-900 uppercase tracking-wider">
-            <AlertTriangle className="w-4 h-4 text-amber-600" />
-            Action Required ({pendingDuplicates.length + lowConfidenceParses.length} items)
+      {/* Needs Attention / Pipeline Action Strip */}
+      <div className="bg-card rounded-xl border border-border p-4 shadow-soft space-y-3">
+        <div className="flex items-center gap-2 text-xs font-bold text-amber-900 uppercase tracking-wider">
+          <AlertTriangle className="w-4 h-4 text-amber-600" />
+          Attention Items & Review Priorities
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {/* Attention Item 1: Needs review */}
+          <div
+            onClick={() => navigate('/app/candidates?stage=applied')}
+            className="flex items-center justify-between p-3 rounded-lg bg-blue-50/70 border border-blue-200 hover:bg-blue-100/60 cursor-pointer transition-colors group"
+          >
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-4 h-4 text-primary" />
+              <div>
+                <h4 className="text-xs font-bold text-text group-hover:text-primary transition-colors">
+                  Needs review ({needsReviewCount})
+                </h4>
+                <p className="text-[11px] text-muted">Applications awaiting review</p>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-primary" />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Attention Item 2: Stalled in interview */}
+          <div
+            onClick={() => navigate('/app/candidates?stage=interview')}
+            className="flex items-center justify-between p-3 rounded-lg bg-amber-50/70 border border-amber-200 hover:bg-amber-100/60 cursor-pointer transition-colors group"
+          >
+            <div className="flex items-center gap-2.5">
+              <Clock className="w-4 h-4 text-amber-700" />
+              <div>
+                <h4 className="text-xs font-bold text-text group-hover:text-amber-800 transition-colors">
+                  Stalled in interview ({stalledInterviewCount})
+                </h4>
+                <p className="text-[11px] text-muted">Awaiting interview feedback</p>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-amber-700" />
+          </div>
+
+          {/* Attention Item 3: Pending offers */}
+          <div
+            onClick={() => navigate('/app/candidates?stage=offer')}
+            className="flex items-center justify-between p-3 rounded-lg bg-emerald-50/70 border border-emerald-200 hover:bg-emerald-100/60 cursor-pointer transition-colors group"
+          >
+            <div className="flex items-center gap-2.5">
+              <CheckCircle className="w-4 h-4 text-emerald-600" />
+              <div>
+                <h4 className="text-xs font-bold text-text group-hover:text-emerald-700 transition-colors">
+                  Pending offers ({pendingOffersCount})
+                </h4>
+                <p className="text-[11px] text-muted">Final decision & rollout</p>
+              </div>
+            </div>
+            <ArrowRight className="w-4 h-4 text-emerald-600" />
+          </div>
+        </div>
+
+        {/* Secondary conflicts (Duplicates / Low confidence) */}
+        {(pendingDuplicates.length > 0 || lowConfidenceParses.length > 0) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-border">
             {pendingDuplicates.length > 0 && (
               <div
                 onClick={() => navigate('/app/duplicates')}
-                className="flex items-center justify-between p-3 rounded-lg bg-amber-50/70 border border-amber-200 hover:bg-amber-100/60 cursor-pointer transition-colors"
+                className="flex items-center justify-between p-2.5 rounded-lg bg-gray-50 border border-border hover:bg-gray-100/70 cursor-pointer transition-colors"
               >
-                <div className="flex items-center gap-2.5">
-                  <Copy className="w-4 h-4 text-amber-700" />
-                  <div>
-                    <h4 className="text-xs font-bold text-text">
-                      {pendingDuplicates.length} Potential Duplicate Conflict{pendingDuplicates.length > 1 ? 's' : ''}
-                    </h4>
-                    <p className="text-[11px] text-muted">Review candidate identity overlaps</p>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <Copy className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="text-xs font-semibold text-text">
+                    {pendingDuplicates.length} Duplicate Conflict{pendingDuplicates.length > 1 ? 's' : ''}
+                  </span>
                 </div>
-                <ArrowRight className="w-4 h-4 text-amber-700" />
+                <ArrowRight className="w-3.5 h-3.5 text-muted" />
               </div>
             )}
 
             {lowConfidenceParses.length > 0 && (
               <div
                 onClick={() => navigate('/app/upload')}
-                className="flex items-center justify-between p-3 rounded-lg bg-indigo-50/70 border border-indigo-200 hover:bg-indigo-100/60 cursor-pointer transition-colors"
+                className="flex items-center justify-between p-2.5 rounded-lg bg-gray-50 border border-border hover:bg-gray-100/70 cursor-pointer transition-colors"
               >
-                <div className="flex items-center gap-2.5">
-                  <Sparkles className="w-4 h-4 text-primary" />
-                  <div>
-                    <h4 className="text-xs font-bold text-text">
-                      {lowConfidenceParses.length} Low-Confidence Resumes
-                    </h4>
-                    <p className="text-[11px] text-muted">Review and correct parsed fields</p>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-primary" />
+                  <span className="text-xs font-semibold text-text">
+                    {lowConfidenceParses.length} Low-Confidence Parsed Resumes
+                  </span>
                 </div>
-                <ArrowRight className="w-4 h-4 text-primary" />
+                <ArrowRight className="w-3.5 h-3.5 text-muted" />
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

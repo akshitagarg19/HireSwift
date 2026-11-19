@@ -21,6 +21,7 @@ import { Modal } from '@/components/ui/Modal'
 import { toast } from 'sonner'
 import { Search, Filter, Undo2, MapPin, Briefcase } from 'lucide-react'
 import { Candidate, Application } from '@/types'
+import { isReadOnlyViewer } from '@/lib/permissions'
 
 // Draggable Kanban Card Component
 interface KanbanCardProps {
@@ -30,12 +31,15 @@ interface KanbanCardProps {
 }
 
 const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick }) => {
+  const { companies, currentCompanyId, currentUser } = useAppStore()
+  const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
+  const isReadOnly = isReadOnlyViewer(currentUser?.role)
+
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: application.id,
     data: { application, candidate },
+    disabled: isReadOnly,
   })
-  const { companies, currentCompanyId } = useAppStore()
-  const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
 
   const displayName = company.settings.blindMode ? `Candidate #${candidate.id.slice(-4)}` : candidate.name
   const displayCollege = company.settings.blindMode && company.settings.hiddenFields.includes('college')
@@ -51,9 +55,9 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick
       {...listeners}
       {...attributes}
       onClick={onClick}
-      className={`bg-white rounded-xl border border-border p-3.5 shadow-soft hover:shadow-card hover:border-indigo-200 transition-all cursor-grab active:cursor-grabbing space-y-2.5 ${
-        isDragging ? 'opacity-30' : ''
-      }`}
+      className={`bg-white rounded-xl border border-border p-3.5 shadow-soft hover:shadow-card hover:border-indigo-200 transition-all ${
+        isReadOnly ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'
+      } space-y-2.5 ${isDragging ? 'opacity-30' : ''}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
@@ -72,6 +76,18 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick
             {s}
           </span>
         ))}
+        {/* Custom fields preview on Kanban card */}
+        {company.settings.customFields.length > 0 && candidate.customFields && (
+          company.settings.customFields.slice(0, 2).map((cf) => {
+            const val = candidate.customFields?.[cf.id]
+            if (val === undefined || val === '') return null
+            return (
+              <span key={cf.id} className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-50 text-indigo-700 font-medium">
+                {String(val)}
+              </span>
+            )
+          })
+        )}
       </div>
 
       <div className="flex items-center justify-between text-[11px] text-muted pt-2 border-t border-gray-100">

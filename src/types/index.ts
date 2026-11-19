@@ -77,6 +77,7 @@ export interface Job {
   type: 'Full-time' | 'Part-time' | 'Internship' | 'Contract';
   jdText: string;
   requirements: JobRequirements;
+  scoringWeights?: ScoringWeights;
   status: 'Active' | 'Paused' | 'Closed';
   createdAt: string;
 }

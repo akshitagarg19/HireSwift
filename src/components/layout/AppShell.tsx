@@ -26,6 +26,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
 import { CommandPalette } from '@/components/CommandPalette'
 import { cn } from '@/lib/utils'
+import { Role } from '@/types'
 
 export const AppShell: React.FC = () => {
   const navigate = useNavigate()
@@ -35,6 +36,7 @@ export const AppShell: React.FC = () => {
     currentUser,
     companies,
     switchCompany,
+    switchRole,
     logout,
     duplicateGroups,
     candidates,
@@ -173,10 +175,17 @@ export const AppShell: React.FC = () => {
           </a>
 
           <div className="px-3 py-2 rounded-lg bg-gray-50 border border-border flex items-center justify-between text-xs text-muted">
-            <span>Your Role</span>
-            <Badge variant="outline" size="sm" className="font-semibold text-text uppercase">
-              {currentUser?.role || 'Viewer'}
-            </Badge>
+            <span className="font-medium">Active Role</span>
+            <select
+              aria-label="Switch User Role"
+              value={currentUser?.role || 'Viewer'}
+              onChange={(e) => switchRole(e.target.value as Role)}
+              className="bg-white border border-border rounded px-1.5 py-0.5 text-[11px] font-semibold text-text focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer uppercase"
+            >
+              <option value="Admin">Admin</option>
+              <option value="Recruiter">Recruiter</option>
+              <option value="Viewer">Viewer</option>
+            </select>
           </div>
         </div>
       </aside>

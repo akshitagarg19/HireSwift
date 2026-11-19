@@ -29,6 +29,7 @@ import {
   Layers,
 } from 'lucide-react'
 import { matchScore } from '@/lib/scoring'
+import { isReadOnlyViewer } from '@/lib/permissions'
 
 export const CandidateDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -64,11 +65,13 @@ export const CandidateDetailPage: React.FC = () => {
   const [newNoteText, setNewNoteText] = useState('')
 
   // Inline edit mode state
+  const isReadOnly = isReadOnlyViewer(currentUser?.role)
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
   const [editCollege, setEditCollege] = useState('')
   const [editCgpa, setEditCgpa] = useState<number>(0)
   const [editExp, setEditExp] = useState<number>(0)
+  const [editCustomFields, setEditCustomFields] = useState<Record<string, any>>({})
 
   // Scorecard evaluation state
   const [scorecardRating, setScorecardRating] = useState(4)
@@ -148,6 +151,7 @@ export const CandidateDetailPage: React.FC = () => {
       college: editCollege || candidate.college,
       cgpa: editCgpa || candidate.cgpa,
       experienceYears: editExp !== undefined ? editExp : candidate.experienceYears,
+      customFields: { ...(candidate.customFields || {}), ...editCustomFields },
     })
     setIsEditing(false)
     toast.success('Profile updated and scores re-ranked!')
@@ -158,6 +162,7 @@ export const CandidateDetailPage: React.FC = () => {
     setEditCollege(candidate.college)
     setEditCgpa(candidate.cgpa)
     setEditExp(candidate.experienceYears)
+    setEditCustomFields({ ...(candidate.customFields || {}) })
     setIsEditing(true)
   }
 
@@ -283,43 +288,51 @@ export const CandidateDetailPage: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            leftIcon={<Mail className="w-4 h-4" />}
-            onClick={() => navigate(`/app/emails?recipientIds=${candidate.id}`)}
-          >
-            Send Email
-          </Button>
+          {isReadOnly ? (
+            <div className="px-3 py-1.5 rounded-lg bg-gray-100 border border-border text-xs text-muted font-medium">
+              Viewer Mode (Read-Only)
+            </div>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<Mail className="w-4 h-4" />}
+                onClick={() => navigate(`/app/emails?recipientIds=${candidate.id}`)}
+              >
+                Send Email
+              </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            leftIcon={<Layers className="w-4 h-4" />}
-            onClick={() => setStageModalOpen(true)}
-          >
-            Move Stage
-          </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<Layers className="w-4 h-4" />}
+                onClick={() => setStageModalOpen(true)}
+              >
+                Move Stage
+              </Button>
 
-          {activeApp?.stage !== 'shortlisted' && (
-            <Button
-              variant="primary"
-              size="sm"
-              leftIcon={<CheckCircle className="w-4 h-4" />}
-              onClick={handleShortlist}
-            >
-              Shortlist
-            </Button>
+              {activeApp?.stage !== 'shortlisted' && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<CheckCircle className="w-4 h-4" />}
+                  onClick={handleShortlist}
+                >
+                  Shortlist
+                </Button>
+              )}
+
+              <Button
+                variant="danger"
+                size="sm"
+                leftIcon={<XCircle className="w-4 h-4" />}
+                onClick={() => setRejectModalOpen(true)}
+              >
+                Reject
+              </Button>
+            </>
           )}
-
-          <Button
-            variant="danger"
-            size="sm"
-            leftIcon={<XCircle className="w-4 h-4" />}
-            onClick={() => setRejectModalOpen(true)}
-          >
-            Reject
-          </Button>
         </div>
       </div>
 
@@ -346,46 +359,83 @@ export const CandidateDetailPage: React.FC = () => {
                   </Button>
                 </div>
               ) : (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  leftIcon={<Edit3 className="w-3.5 h-3.5" />}
-                  onClick={handleStartEdit}
-                >
-                  Edit Profile
-                </Button>
+                !isReadOnly && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    leftIcon={<Edit3 className="w-3.5 h-3.5" />}
+                    onClick={handleStartEdit}
+                  >
+                    Edit Profile
+                  </Button>
+                )
               )}
             </div>
 
             {/* Editable Fields */}
             {isEditing ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 bg-gray-50 rounded-lg">
-                <div>
-                  <label className="block text-xs font-semibold text-text mb-1">Candidate Name</label>
-                  <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+              <div className="space-y-4 p-3 bg-gray-50 rounded-lg">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-text mb-1">Candidate Name</label>
+                    <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-text mb-1">College</label>
+                    <Input value={editCollege} onChange={(e) => setEditCollege(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-text mb-1">CGPA (10 Scale)</label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      value={editCgpa}
+                      onChange={(e) => setEditCgpa(parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-text mb-1">Experience (Years)</label>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      value={editExp}
+                      onChange={(e) => setEditExp(parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-text mb-1">College</label>
-                  <Input value={editCollege} onChange={(e) => setEditCollege(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-text mb-1">CGPA (10 Scale)</label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    value={editCgpa}
-                    onChange={(e) => setEditCgpa(parseFloat(e.target.value) || 0)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-text mb-1">Experience (Years)</label>
-                  <Input
-                    type="number"
-                    step="0.5"
-                    value={editExp}
-                    onChange={(e) => setEditExp(parseFloat(e.target.value) || 0)}
-                  />
-                </div>
+
+                {/* Custom Fields in Edit Mode */}
+                {company.settings.customFields.length > 0 && (
+                  <div className="pt-2 border-t border-border">
+                    <span className="text-xs font-bold text-text block mb-2">Custom Organization Fields</span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {company.settings.customFields.map((cf) => (
+                        <div key={cf.id}>
+                          <label className="block text-[11px] font-semibold text-text mb-1">{cf.name}</label>
+                          {cf.type === 'select' && cf.options ? (
+                            <select
+                              value={editCustomFields[cf.id] || ''}
+                              onChange={(e) => setEditCustomFields({ ...editCustomFields, [cf.id]: e.target.value })}
+                              className="w-full h-8 px-2 text-xs rounded border border-border bg-white"
+                            >
+                              <option value="">Select...</option>
+                              {cf.options.map((opt) => (
+                                <option key={opt} value={opt}>{opt}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <Input
+                              value={editCustomFields[cf.id] || ''}
+                              onChange={(e) => setEditCustomFields({ ...editCustomFields, [cf.id]: e.target.value })}
+                              placeholder={`Enter ${cf.name}`}
+                              className="h-8 text-xs"
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               /* Display Profile */
@@ -413,6 +463,27 @@ export const CandidateDetailPage: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Organization Custom Fields */}
+                {company.settings.customFields.length > 0 && (
+                  <div>
+                    <div className="text-xs font-semibold text-muted uppercase tracking-wider mb-2">
+                      Organization Custom Fields
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {company.settings.customFields.map((cf) => (
+                        <div key={cf.id} className="p-3 bg-gray-50/70 rounded-lg border border-border">
+                          <div className="text-muted text-[11px] font-medium">{cf.name}</div>
+                          <div className="text-xs font-bold text-text mt-0.5">
+                            {candidate.customFields && candidate.customFields[cf.id] !== undefined
+                              ? String(candidate.customFields[cf.id])
+                              : 'Not provided'}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Skills */}
                 <div>

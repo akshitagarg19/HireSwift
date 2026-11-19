@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useMemo, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAppStore } from '@/store'
+import { isReadOnlyViewer } from '@/lib/permissions'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
@@ -31,8 +32,10 @@ import { hasSkillWithSynonyms } from '@/lib/scoring'
 
 export const CandidatesPage: React.FC = () => {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const {
     currentCompanyId,
+    currentUser,
     candidates,
     applications,
     companies,
@@ -40,10 +43,15 @@ export const CandidatesPage: React.FC = () => {
   } = useAppStore()
 
   const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
+  const isReadOnly = isReadOnlyViewer(currentUser?.role)
+
+  // URL Query Parameters initialization
+  const stageParam = searchParams.get('stage')
+  const searchParam = searchParams.get('q') || searchParams.get('search') || ''
 
   // Filter states
   const [nlSearch, setNlSearch] = useState('')
-  const [textSearch, setTextSearch] = useState('')
+  const [textSearch, setTextSearch] = useState(searchParam)
   const [minCgpa, setMinCgpa] = useState<number>(0)
   const [minTenth, setMinTenth] = useState<number>(0)
   const [minTwelfth, setMinTwelfth] = useState<number>(0)
@@ -52,9 +60,17 @@ export const CandidatesPage: React.FC = () => {
   const [maxExp, setMaxExp] = useState<number>(10)
   const [selectedLocations, setSelectedLocations] = useState<string[]>([])
   const [selectedBatches, setSelectedBatches] = useState<number[]>([])
-  const [selectedStages, setSelectedStages] = useState<string[]>([])
+  const [selectedStages, setSelectedStages] = useState<string[]>(stageParam ? [stageParam] : [])
   const [minScore, setMinScore] = useState<number>(0)
   const [customFieldFilters, setCustomFieldFilters] = useState<Record<string, string>>({})
+
+  // Update selected stage when URL changes
+  useEffect(() => {
+    const stage = searchParams.get('stage')
+    if (stage) {
+      setSelectedStages([stage])
+    }
+  }, [searchParams])
 
   // UI state
   const [showFilterSidebar, setShowFilterSidebar] = useState(true)
@@ -65,6 +81,16 @@ export const CandidatesPage: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [page, setPage] = useState(1)
   const pageSize = 12
+
+  // Column visibility state (including custom fields)
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {}
+    company.settings.customFields.forEach((cf) => {
+      initial[cf.id] = true
+    })
+    return initial
+  })
+  const [showColumnChooser, setShowColumnChooser] = useState(false)
 
   // Company candidates & application lookup
   const companyCandidates = useMemo(
@@ -454,6 +480,40 @@ export const CandidatesPage: React.FC = () => {
             Export CSV
           </Button>
 
+          {/* Table Column Chooser */}
+          <div className="relative">
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<SlidersHorizontal className="w-3.5 h-3.5" />}
+              onClick={() => setShowColumnChooser(!showColumnChooser)}
+            >
+              Columns
+            </Button>
+            {showColumnChooser && (
+              <div className="absolute right-0 mt-1 w-56 bg-white rounded-lg border border-border shadow-modal p-2.5 z-30 space-y-2 text-xs animate-in fade-in-0">
+                <span className="font-bold text-muted uppercase text-[10px] block">
+                  Custom & Standard Columns
+                </span>
+                {company.settings.customFields.length === 0 ? (
+                  <p className="text-[11px] text-muted italic">No custom fields defined in Settings.</p>
+                ) : (
+                  company.settings.customFields.map((cf) => (
+                    <label key={cf.id} className="flex items-center gap-2 px-1 py-0.5 hover:bg-gray-50 rounded cursor-pointer text-text">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(visibleColumns[cf.id])}
+                        onChange={(e) => setVisibleColumns({ ...visibleColumns, [cf.id]: e.target.checked })}
+                        className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
+                      />
+                      <span className="truncate">{cf.name}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
           <Button
             variant="secondary"
             size="sm"
@@ -746,15 +806,21 @@ export const CandidatesPage: React.FC = () => {
               </span>
 
               <div className="flex items-center gap-2">
-                <Button variant="primary" size="sm" onClick={handleBulkShortlist}>
-                  Shortlist Selected
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setBulkStageModalOpen(true)}>
-                  Move Stage
-                </Button>
-                <Button variant="outline" size="sm" leftIcon={<Mail className="w-3 h-3" />} onClick={handleBulkEmail}>
-                  Send Email
-                </Button>
+                {isReadOnly ? (
+                  <span className="text-xs text-muted italic">Read-only view (Viewer role)</span>
+                ) : (
+                  <>
+                    <Button variant="primary" size="sm" onClick={handleBulkShortlist}>
+                      Shortlist Selected
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setBulkStageModalOpen(true)}>
+                      Move Stage
+                    </Button>
+                    <Button variant="outline" size="sm" leftIcon={<Mail className="w-3 h-3" />} onClick={handleBulkEmail}>
+                      Send Email
+                    </Button>
+                  </>
+                )}
                 {selectedCandidateIds.length >= 2 && selectedCandidateIds.length <= 4 && (
                   <Button variant="secondary" size="sm" leftIcon={<Scale className="w-3 h-3" />} onClick={handleBulkCompare}>
                     Compare ({selectedCandidateIds.length})
@@ -817,6 +883,13 @@ export const CandidatesPage: React.FC = () => {
                       </div>
                     </th>
                     <th className="p-3">Location</th>
+                    {company.settings.customFields
+                      .filter((cf) => visibleColumns[cf.id])
+                      .map((cf) => (
+                        <th key={cf.id} className="p-3 font-semibold text-text">
+                          {cf.name}
+                        </th>
+                      ))}
                     <th
                       className="p-3 cursor-pointer hover:text-text"
                       onClick={() => {
@@ -920,6 +993,17 @@ export const CandidatesPage: React.FC = () => {
                               ? '[Hidden]'
                               : candidate.location}
                           </td>
+
+                          {/* Custom Fields Columns */}
+                          {company.settings.customFields
+                            .filter((cf) => visibleColumns[cf.id])
+                            .map((cf) => (
+                              <td key={cf.id} className="p-3 text-muted">
+                                {candidate.customFields && candidate.customFields[cf.id] !== undefined
+                                  ? String(candidate.customFields[cf.id])
+                                  : '—'}
+                              </td>
+                            ))}
 
                           {/* Match Score */}
                           <td className="p-3">

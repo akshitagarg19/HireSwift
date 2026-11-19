@@ -43,10 +43,10 @@ export const JobDetailPage: React.FC = () => {
 
   // Local weights state for live slider adjustments
   const [weights, setWeights] = useState({
-    skills: company.settings.scoringWeights.skills,
-    experience: company.settings.scoringWeights.experience,
-    education: company.settings.scoringWeights.education,
-    semantic: company.settings.scoringWeights.semantic,
+    skills: job?.scoringWeights?.skills ?? company.settings.scoringWeights.skills,
+    experience: job?.scoringWeights?.experience ?? company.settings.scoringWeights.experience,
+    education: job?.scoringWeights?.education ?? company.settings.scoringWeights.education,
+    semantic: job?.scoringWeights?.semantic ?? company.settings.scoringWeights.semantic,
   })
 
   const [activeTab, setActiveTab] = useState('ranked')
@@ -77,14 +77,13 @@ export const JobDetailPage: React.FC = () => {
     .filter((item) => Boolean(item.candidate))
     .sort((a, b) => b.app.matchScore - a.app.matchScore)
 
-  // Handle slider weight changes (keeping sum normalized)
+  // Handle slider weight changes (re-ranks candidates for this job only)
   const handleWeightChange = (key: keyof typeof weights, value: number) => {
     const updated = { ...weights, [key]: value }
-    const total = updated.skills + updated.experience + updated.education + updated.semantic
     setWeights(updated)
 
-    // Save to company settings and trigger live re-rank
-    updateCompanySettings(company.id, {
+    // Save to this specific job and trigger live re-rank for this job only
+    updateJob(job.id, {
       scoringWeights: updated,
     })
   }

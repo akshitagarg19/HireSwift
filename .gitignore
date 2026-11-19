@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Production build artifacts
+dist/
+build/
+
+# Testing
+coverage/
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Environment files
+.env
+.env*
+!.env.example
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

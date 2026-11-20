@@ -1,19 +1,23 @@
-# Senior Full Stack Engineer (React / TypeScript / Node.js)
+# Full Stack Engineer
 
-**Location**: Bengaluru, India (Hybrid)  
-**Department**: Engineering  
-**Experience Level**: 2-5 Years  
+**Location**: Bengaluru, India
+**Experience**: 1+ years
+**Minimum CGPA**: 7.0 / 10
 
-### Job Summary
-Nova Labs is seeking a passionate Full Stack Engineer to lead development of our high-scale cloud platforms. You will design, build, and maintain mission-critical web applications with high performance and reliability.
+## About the role
+We build a recruiting SaaS and need a full stack engineer to own features end to end.
 
-### Key Requirements
-- **Required Skills**: React, TypeScript, Node.js, PostgreSQL, Docker
-- **Preferred Skills**: Redis, Kubernetes, GraphQL, Tailwind CSS
-- **Experience**: Minimum 2 years of production experience in modern TypeScript & React architectures.
-- **Education**: B.Tech / B.E. in Computer Science or related engineering disciplines from a recognized institute. Minimum 7.0 CGPA.
-- **Responsibilities**:
-  - Build responsive, accessible, and fast web UIs using React and Tailwind CSS.
-  - Architect scalable REST and GraphQL backend services in Node.js / TypeScript.
-  - Containerize microservices with Docker and deploy to cloud environments.
-  - Mentor junior engineers and collaborate in agile sprint cycles.
+## Required skills
+- React
+- Node.js
+
+## Preferred skills
+- TypeScript
+- PostgreSQL
+- Docker
+- AWS
+
+## What you will do
+- Ship reliable features and improve existing systems.
+- Work with product, design and data teams.
+- Review code, write tests and document decisions.

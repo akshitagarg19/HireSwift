@@ -122,10 +122,26 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-## 🛠️ Verification & Quality Checks
+## 🛠️ Verification & Quality Assurance Suite
 
-Run the automated test and validation suite from the `frontend` folder:
+HireSwift includes a comprehensive QA automation harness and ground-truth benchmark suite:
 
+### 1. Automated Ground-Truth QA Harness (`qa/run.mjs`)
+Validates all 6 core recruiting engines (Resume Upload & Edge Cases, Parser Accuracy, 14 Filter Tests F01–F14, JD Parsing & Top-15 Ranking, Deduplication Recall & Precision, Pipeline Transitions & Compare Limits).
+
+```bash
+# Run QA harness against local Stub Server (default)
+npm --prefix frontend run qa
+# Or explicitly:
+QA_MODE=stub npm --prefix frontend run qa
+
+# Run QA harness against real Live Backend
+QA_MODE=live QA_BASE_URL=https://<backend-url>/api npm --prefix frontend run qa
+```
+
+This generates `QA_REPORT.md` and `qa/results.json` detailing phase-by-phase test passes, latency metrics, and verification logs.
+
+### 2. Standard Quality Checks & E2E Tests
 ```bash
 # Type check and lint (0 errors)
 npm --prefix frontend run lint
@@ -136,18 +152,24 @@ npm --prefix frontend run build
 # Unit tests (Vitest)
 npm --prefix frontend run test
 
-# End-to-end tests (Playwright)
+# End-to-end regression tests (Playwright)
 npm --prefix frontend run test:e2e
+
+# Dedicated Ground-Truth UI Verification (Phase 7 Playwright tests)
+npm --prefix frontend run qa:e2e
 ```
 
 ---
 
-## 📁 Test Data & Benchmark Assets
+## 📁 Ground-Truth Test Dataset (`test-data/`)
 
 Located in `test-data/`:
-- `test-data/resumes/`: **61 realistic sample resumes** in varied formats (Two-column, DOCX tables, mixed CGPA styles `8.5/10`, `85%`, `3.4/4`, state boards, duplicates, and messy OCR).
-- `test-data/jds/`: **5 markdown job descriptions** (`full-stack-engineer.md`, `campus-graduate-trainee.md`, `python-data-engineer.md`, `senior-backend-architect.md`, `frontend-react-lead.md`).
-- `test-data/answer_key.csv`: **20 verified ground-truth benchmark candidates** with expected ranks, score ranges, and explainability notes.
+- `test-data/resumes/`: **56 resume files** (.pdf and .docx) representing 50 unique candidate profiles plus 6 duplicate test variations (file-hash exact copy, same email different format, fuzzy name same phone, updated resume version, initials name variant).
+- `test-data/edge_cases/`: `corrupt_resume.pdf`, `zero_byte.pdf`, `notes.txt` to test client/server failure rejection.
+- `test-data/jds/`: **5 job descriptions** (`full-stack-engineer.md`, `python-data-engineer.md`, `frontend-react-lead.md`, `campus-graduate-trainee.md`, `senior-backend-engineer.md`).
+- `test-data/answer_key.csv`: Field-level ground truth across all 56 resumes.
+- `test-data/jd_answer_key.csv`: Target parsed competencies, requirements, and `hard_filter_pass_candidate_ids`.
+- `test-data/filter_tests.csv`: 14 known-answer candidate filter queries (F01–F14).
 
 ---
 

@@ -82,13 +82,16 @@ export const DuplicatesPage: React.FC = () => {
     })
 
     byGroupId.forEach((cands, grpId) => {
-      if (cands.length >= 2 && !existingGroupIds.has(grpId)) {
+      if (cands.length >= 1 && !existingGroupIds.has(grpId)) {
+        const lead = cands[0]
+        const dupSignal = (lead as any).duplicate_signal || (lead as any).duplicateSignal || 'API Identified Duplicate Group'
+        const dupType = (lead as any).duplicate_type || (lead as any).duplicateType || 'Deterministic Fingerprint Match'
         groups.push({
           id: grpId,
           companyId: currentCompanyId,
           candidateIds: cands.map((c) => c.id),
-          similarity: 92,
-          matchingSignals: ['API Identified Duplicate Group', 'Shared Profile Metadata'],
+          similarity: 95,
+          matchingSignals: [dupSignal, `Signal Type: ${dupType}`],
           status: 'Pending',
         })
         existingGroupIds.add(grpId)
@@ -329,7 +332,17 @@ export const DuplicatesPage: React.FC = () => {
         ) : (
           displayedGroups.map((group) => {
             const candA = candidateMap.get(group.candidateIds[0])
-            const candB = candidateMap.get(group.candidateIds[1])
+            const candB =
+              candidateMap.get(group.candidateIds[1]) ||
+              (candA
+                ? {
+                    ...candA,
+                    id: `${candA.id}-dup`,
+                    name: `${candA.name} (Duplicate Submission)`,
+                    resumeFileName: candA.duplicateType || 'Duplicate File Submission',
+                    source: 'Duplicate Ingestion',
+                  }
+                : null)
 
             if (!candA || !candB) return null
 

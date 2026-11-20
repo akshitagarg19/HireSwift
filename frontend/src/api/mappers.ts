@@ -49,6 +49,8 @@ export const ApiCandidateSchema = z.object({
   custom_fields: z.record(z.union([z.string(), z.number(), z.boolean()])).optional().default({}),
   is_duplicate: z.boolean().optional().default(false),
   duplicate_group_id: z.string().nullable().optional(),
+  duplicate_type: z.string().nullable().optional(),
+  duplicate_signal: z.string().nullable().optional(),
   group_id: z.string().nullable().optional(),
   source: z.string().optional().default('Upload'),
   created_at: z.string().optional(),
@@ -89,6 +91,8 @@ export function fromApiCandidate(raw: unknown): Candidate {
     customFields: data.custom_fields || {},
     isDuplicate: Boolean(data.is_duplicate),
     duplicateGroupId: data.duplicate_group_id || data.group_id || undefined,
+    duplicateSignal: data.duplicate_signal || undefined,
+    duplicateType: data.duplicate_type || undefined,
     source: data.source || 'Upload',
     createdAt: data.created_at || new Date().toISOString(),
   }

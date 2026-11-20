@@ -74,8 +74,8 @@ export const CandidatesPage: React.FC = () => {
   const initialCgpa = parseFloat(searchParams.get('cgpa_min') || '0') || 0
   const initialTenth = parseInt(searchParams.get('tenth_min') || '0', 10) || 0
   const initialTwelfth = parseInt(searchParams.get('twelfth_min') || '0', 10) || 0
-  const initialExpMin = parseFloat(searchParams.get('exp_min') || '0') || 0
-  const initialExpMax = parseFloat(searchParams.get('exp_max') || '10') || 10
+  const initialExpMin = searchParams.has('exp_min') ? parseFloat(searchParams.get('exp_min')!) : 0
+  const initialExpMax = searchParams.has('exp_max') ? parseFloat(searchParams.get('exp_max')!) : 10
   const initialCity = searchParams.get('city') || 'All'
   const initialBatch = searchParams.get('grad_year') ? parseInt(searchParams.get('grad_year')!, 10) : null
   const initialUnknown = searchParams.get('include_unknown') === 'true'
@@ -108,12 +108,43 @@ export const CandidatesPage: React.FC = () => {
   const [includeUnknown, setIncludeUnknown] = useState<boolean>(initialUnknown)
   const [selectedStages, setSelectedStages] = useState<string[]>(initialStage ? [initialStage] : [])
 
-  // Sync stage from URL query parameter
+  // Sync URL search parameters to state when URL changes externally
   useEffect(() => {
+    const q = searchParams.get('q') || searchParams.get('search') || ''
+    setTextSearch(q)
+    setDebouncedQuery(q)
+    setMinCgpa(parseFloat(searchParams.get('cgpa_min') || '0') || 0)
+    setMinTenth(parseInt(searchParams.get('tenth_min') || '0', 10) || 0)
+    setMinTwelfth(parseInt(searchParams.get('twelfth_min') || '0', 10) || 0)
+    setMinExp(searchParams.has('exp_min') ? parseFloat(searchParams.get('exp_min')!) : 0)
+    setMaxExp(searchParams.has('exp_max') ? parseFloat(searchParams.get('exp_max')!) : 10)
+    setSelectedCity(searchParams.get('city') || 'All')
+    setSelectedBatch(searchParams.get('grad_year') ? parseInt(searchParams.get('grad_year')!, 10) : null)
+    setIncludeUnknown(searchParams.get('include_unknown') === 'true')
+
+    const skillsList: SkillFilter[] = []
+    const all = searchParams.get('skills_all')?.split(',').filter(Boolean) || []
+    const any = searchParams.get('skills_any')?.split(',').filter(Boolean) || []
+    const none = searchParams.get('skills_none')?.split(',').filter(Boolean) || []
+    all.forEach((s) => skillsList.push({ name: s.trim(), mode: 'all' }))
+    any.forEach((s) => skillsList.push({ name: s.trim(), mode: 'any' }))
+    none.forEach((s) => skillsList.push({ name: s.trim(), mode: 'none' }))
+    setSkillFilters(skillsList)
+
     const stageParam = searchParams.get('stage')
-    if (stageParam && !selectedStages.includes(stageParam)) {
-      setSelectedStages([stageParam])
+    setSelectedStages(stageParam ? [stageParam] : [])
+
+    const sortParam = searchParams.get('sort')
+    if (sortParam) {
+      if (sortParam.startsWith('cgpa')) setSortBy('cgpa')
+      else if (sortParam.startsWith('exp')) setSortBy('exp')
+      else if (sortParam.startsWith('name')) setSortBy('name')
+      else if (sortParam.startsWith('score')) setSortBy('score')
+      setSortOrder(sortParam.endsWith('asc') ? 'asc' : 'desc')
     }
+
+    const pageParam = parseInt(searchParams.get('page') || '1', 10) || 1
+    setPage(pageParam)
   }, [searchParams])
 
   // UI state
@@ -140,6 +171,7 @@ export const CandidatesPage: React.FC = () => {
   const [serverTotal, setServerTotal] = useState<number>(0)
   const [isServerLoading, setIsServerLoading] = useState<boolean>(false)
   const [serverError, setServerError] = useState<string | null>(null)
+  const [retryTrigger, setRetryTrigger] = useState<number>(0)
 
   // Debounce search query input (300ms)
   useEffect(() => {
@@ -166,8 +198,8 @@ export const CandidatesPage: React.FC = () => {
         if (minCgpa > 0) queryParams.cgpa_min = minCgpa
         if (minTenth > 0) queryParams.tenth_min = minTenth
         if (minTwelfth > 0) queryParams.twelfth_min = minTwelfth
-        if (minExp > 0) queryParams.exp_min = minExp
-        if (maxExp < 10) queryParams.exp_max = maxExp
+        if (minExp > 0 || searchParams.has('exp_min')) queryParams.exp_min = minExp
+        if (maxExp < 10 || searchParams.has('exp_max')) queryParams.exp_max = maxExp
         if (selectedCity && selectedCity !== 'All') queryParams.city = selectedCity
         if (selectedBatch) queryParams.grad_year = selectedBatch
         if (includeUnknown) queryParams.include_unknown = true
@@ -189,7 +221,7 @@ export const CandidatesPage: React.FC = () => {
         setServerCandidates(res.items)
         setServerTotal(res.total)
       } catch (err: any) {
-        setServerError(err?.message || 'Failed to fetch candidates from server.')
+        setServerError(`Failed to fetch candidates: ${err?.message || 'Server error'}`)
       } finally {
         setIsServerLoading(false)
       }
@@ -211,6 +243,7 @@ export const CandidatesPage: React.FC = () => {
     sortOrder,
     page,
     pageSize,
+    retryTrigger,
   ])
 
   // Column visibility state (including custom fields)
@@ -354,7 +387,9 @@ export const CandidatesPage: React.FC = () => {
 
     if (page > 1) params.set('page', String(page))
 
-    setSearchParams(params, { replace: true })
+    if (params.toString() !== searchParams.toString()) {
+      setSearchParams(params, { replace: true })
+    }
   }, [
     debouncedQuery,
     minCgpa,
@@ -754,6 +789,19 @@ export const CandidatesPage: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* Server Error State with Retry */}
+      {serverError && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-rose-800 text-sm font-semibold">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{serverError}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setRetryTrigger((k) => k + 1)}>
+            Retry
+          </Button>
+        </div>
+      )}
 
       {/* Search Bar & Active Filter Chips */}
       <div className="bg-white rounded-xl border border-border p-3 shadow-soft space-y-2.5">
@@ -1161,6 +1209,18 @@ export const CandidatesPage: React.FC = () => {
                         </div>
                       </td>
                     </tr>
+                  ) : serverError ? (
+                    <tr>
+                      <td colSpan={11} className="p-8 text-center text-muted">
+                        <div className="flex flex-col items-center justify-center gap-2 text-rose-700">
+                          <AlertTriangle className="w-6 h-6 text-rose-500" />
+                          <span className="text-sm font-semibold">{serverError}</span>
+                          <Button variant="outline" size="sm" onClick={() => setRetryTrigger((k) => k + 1)}>
+                            Retry
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
                   ) : candidatesToRender.length === 0 ? (
                     <tr>
                       <td colSpan={11} className="p-8">
@@ -1535,18 +1595,37 @@ export const CandidatesPage: React.FC = () => {
                 <div className="grid grid-cols-3 gap-3">
                   <div className="p-3 bg-white rounded-lg border border-border">
                     <span className="text-[10px] uppercase font-bold text-muted">CGPA</span>
-                    <div className="text-lg font-bold text-text mt-1">{drawerCandidate.cgpa} / 10</div>
+                    <div className="text-lg font-bold text-text mt-1">
+                      {drawerCandidate.cgpa != null ? (
+                        <span>{drawerCandidate.cgpa} / 10</span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-sm font-bold border border-amber-200">
+                          -
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="p-3 bg-white rounded-lg border border-border">
                     <span className="text-[10px] uppercase font-bold text-muted">10th / 12th</span>
                     <div className="text-xs font-semibold text-text mt-1">
-                      {drawerCandidate.tenthPercent}% / {drawerCandidate.twelfthPercent}%
+                      {drawerCandidate.tenthPercent != null ? `${drawerCandidate.tenthPercent}%` : '-'} /{' '}
+                      {drawerCandidate.twelfthPercent != null ? `${drawerCandidate.twelfthPercent}%` : '-'}
                     </div>
                   </div>
                   <div className="p-3 bg-white rounded-lg border border-border">
                     <span className="text-[10px] uppercase font-bold text-muted">Experience</span>
                     <div className="text-lg font-bold text-text mt-1">
-                      {drawerCandidate.experienceYears === 0 ? 'Fresher' : `${drawerCandidate.experienceYears}y`}
+                      {drawerCandidate.experienceYears != null ? (
+                        drawerCandidate.experienceYears === 0 ? (
+                          'Fresher'
+                        ) : (
+                          `${drawerCandidate.experienceYears}y`
+                        )
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-sm font-bold border border-amber-200">
+                          -
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

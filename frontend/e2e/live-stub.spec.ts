@@ -45,7 +45,7 @@ test.describe('Task 7: Live Mode & Stub Server Contract Tests', () => {
     await expect(page.getByText('Candidate Directory')).toBeVisible()
 
     // Verify candidate list loaded from stub server API is displayed
-    await expect(page.getByText('Aditi Sharma').first()).toBeVisible()
+    await expect(page.getByText('Aarav Sharma').first()).toBeVisible()
   })
 
   test('2. Pipeline cards come directly from /api/applications', async ({ page }) => {
@@ -67,28 +67,28 @@ test.describe('Task 7: Live Mode & Stub Server Contract Tests', () => {
     await expect(rejectedCol).toBeVisible()
 
     // Verify candidates from stub server /api/applications exist in their mapped stages
-    // app-01_aditi_sharma is in Applied
-    await expect(page.getByText('Aditi Sharma').first()).toBeVisible()
-    // app-18_karthik_sundaram is in Shortlisted
-    await expect(page.getByText('Karthik Sundaram').first()).toBeVisible()
-    // app-02_priya_patel is in Interview
-    await expect(page.getByText('Priya Patel').first()).toBeVisible()
-    // app-03_vikram_singh is in Offer
-    await expect(page.getByText('Vikram Singh').first()).toBeVisible()
-    // app-13_deepak_joshi is in Rejected
-    await expect(page.getByText('Deepak Joshi').first()).toBeVisible()
+    // C000 Aarav Sharma is in Applied
+    await expect(page.getByText('Aarav Sharma').first()).toBeVisible()
+    // C001 Aditya Kulkarni is in Shortlisted
+    await expect(page.getByText('Aditya Kulkarni').first()).toBeVisible()
+    // C002 Kunal Agarwal is in Interview
+    await expect(page.getByText('Kunal Agarwal').first()).toBeVisible()
+    // C003 Priya Murthy is in Offer
+    await expect(page.getByText('Priya Murthy').first()).toBeVisible()
+    // C004 Shreya Gupta is in Rejected
+    await expect(page.getByText('Shreya Gupta').first()).toBeVisible()
   })
 
   test('3. An invalid move snaps back with the server message', async ({ page }) => {
     await page.goto('/app/pipeline')
     await expect(page.getByText('Recruitment Pipeline Kanban')).toBeVisible()
 
-    // Find the Kanban card for Aditi Sharma in the Applied column
-    const aditiCard = page.locator('div.cursor-grab').filter({ hasText: 'Aditi Sharma' }).first()
-    await expect(aditiCard).toBeVisible()
+    // Find the Kanban card for Aarav Sharma in the Applied column
+    const aaravCard = page.locator('div.cursor-grab').filter({ hasText: 'Aarav Sharma' }).first()
+    await expect(aaravCard).toBeVisible()
 
-    // Select the "Move to:" dropdown inside Aditi Sharma's card
-    const moveToSelect = aditiCard.locator('select')
+    // Select the "Move to:" dropdown inside Aarav Sharma's card
+    const moveToSelect = aaravCard.locator('select')
     await expect(moveToSelect).toBeVisible()
 
     // Attempt invalid transition: Applied -> Offer directly (returns 400 Bad Request on stub server)
@@ -100,8 +100,8 @@ test.describe('Task 7: Live Mode & Stub Server Contract Tests', () => {
     })
     await expect(toastError).toBeVisible({ timeout: 5000 })
 
-    // Aditi Sharma card snaps back and remains in the Applied column
-    await expect(aditiCard).toBeVisible()
+    // Aarav Sharma card snaps back and remains in the Applied column
+    await expect(aaravCard).toBeVisible()
     const currentSelectValue = await moveToSelect.inputValue()
     expect(currentSelectValue).not.toBe('offer')
   })
@@ -217,8 +217,8 @@ test.describe('Task 7: Live Mode & Stub Server Contract Tests', () => {
     await page.goto('/app/pipeline')
     await expect(page.getByText('Recruitment Pipeline Kanban')).toBeVisible()
 
-    // In the stub server, the 5th application (Deepak Joshi) has match_score: null
-    const unscoredCard = page.locator('div.cursor-grab').filter({ hasText: 'Deepak Joshi' }).first()
+    // In the stub server, the 5th application (C004 Shreya Gupta) has match_score: null
+    const unscoredCard = page.locator('div.cursor-grab').filter({ hasText: 'Shreya Gupta' }).first()
     await expect(unscoredCard).toBeVisible()
 
     // Score ring inside this card must render "-"

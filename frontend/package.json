@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "qa": "node ../qa/run.mjs",
+    "qa:e2e": "playwright test e2e/qa-dataset.spec.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",

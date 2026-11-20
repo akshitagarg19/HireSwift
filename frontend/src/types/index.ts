@@ -125,6 +125,8 @@ export interface Candidate {
   customFields: Record<string, string | number | boolean>;
   isDuplicate?: boolean;
   duplicateGroupId?: string;
+  duplicateSignal?: string;
+  duplicateType?: string;
   gender?: 'Male' | 'Female' | 'Other';
   tier?: 'Tier-1' | 'Tier-2' | 'Tier-3';
 }

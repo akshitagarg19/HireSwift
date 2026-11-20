@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
-  testDir: './e2e',
+  testDir: './frontend/e2e',
   timeout: 45000,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
@@ -20,7 +20,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev',
+    command: 'npm --prefix frontend run dev',
     url: 'http://localhost:5173',
     reuseExistingServer: true,
     timeout: 30000,

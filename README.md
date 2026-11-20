@@ -109,13 +109,17 @@ git clone https://github.com/akshitagarg19/HireSwift.git
 cd HireSwift
 
 # 2. Install dependencies
-npm install
+npm --prefix frontend install
 
-# 3. Run development server
+# 3. Run development server (runs frontend on port 5173)
 npm run dev
 
-# 4. Build for production
+# 4. Build for production (outputs static bundle to frontend/dist)
 npm run build
+
+# 5. Run Unit & End-to-End Tests
+npm test
+npm run test:e2e
 ```
 Open [http://localhost:5173](http://localhost:5173) in your browser.
 

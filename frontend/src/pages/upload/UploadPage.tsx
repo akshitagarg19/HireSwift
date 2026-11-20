@@ -465,7 +465,7 @@ export const UploadPage: React.FC = () => {
             <AlertCircle className="w-4 h-4 text-rose-600" />
             Failed Files ({failedFilesList.length}) - Rejected by Parser
           </div>
-          <div className="divide-y divide-rose-200/60 text-xs">
+          <div className="divide-y divide-rose-200/60 text-xs max-h-60 overflow-y-auto pr-1">
             {failedFilesList.map((f, idx) => (
               <div key={idx} className="py-1.5 flex items-center justify-between text-rose-900">
                 <span className="font-semibold">{f.filename}</span>

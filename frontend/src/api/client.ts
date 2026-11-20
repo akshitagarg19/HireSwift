@@ -19,6 +19,25 @@ export const getUseMock = (): boolean => {
 
 export const USE_MOCK = getUseMock()
 
+// Synthetic data detection from stub server (STUB_SCALE=1000)
+let syntheticDetected = false
+export const getIsSyntheticData = (): boolean => syntheticDetected
+export const setSyntheticDetected = (val: boolean) => {
+  syntheticDetected = val
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('hireswift-synthetic', { detail: val }))
+  }
+}
+
+export function checkSyntheticResponse(res: Response) {
+  if (res.headers && res.headers.get('X-Stub-Synthetic') === 'true') {
+    syntheticDetected = true
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('hireswift-synthetic', { detail: true }))
+    }
+  }
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -121,6 +140,35 @@ export const SkillGapResponseSchema = z.object({
   ),
   total_applicants: z.number(),
 })
+
+export const EmailRecipientSchema = z.object({
+  candidate_id: z.string(),
+  to: z.string(),
+  subject: z.string(),
+  body: z.string(),
+})
+
+export const SendBulkEmailRequestSchema = z.object({
+  job_id: z.string().optional(),
+  recipients: z.array(EmailRecipientSchema),
+  include_test_failure: z.boolean().optional(),
+})
+
+export const EmailSendResultItemSchema = z.object({
+  candidate_id: z.string(),
+  email: z.string(),
+  status: z.enum(['sent', 'failed']),
+  error: z.string().optional(),
+})
+
+export const SendBulkEmailResponseSchema = z.object({
+  sent: z.array(EmailSendResultItemSchema),
+})
+
+export type EmailRecipient = z.infer<typeof EmailRecipientSchema>
+export type SendBulkEmailRequest = z.infer<typeof SendBulkEmailRequestSchema>
+export type EmailSendResultItem = z.infer<typeof EmailSendResultItemSchema>
+export type SendBulkEmailResponse = z.infer<typeof SendBulkEmailResponseSchema>
 
 // ==========================================
 // QUERY PARAMETERS AND TYPES
@@ -593,6 +641,33 @@ export const mockApi = {
       job: targetJob,
     }
   },
+
+  sendBulkEmail: async (req: SendBulkEmailRequest): Promise<SendBulkEmailResponse> => {
+    await sleep(250)
+    const results: EmailSendResultItem[] = req.recipients.map((r, idx) => {
+      const email = r.to || ''
+      const isFailed =
+        email.toLowerCase().includes('fail') ||
+        email.toLowerCase().includes('invalid') ||
+        r.candidate_id === 'C042' ||
+        (idx === 1 && req.recipients.length >= 2 && Boolean(req.include_test_failure))
+
+      if (isFailed) {
+        return {
+          candidate_id: r.candidate_id,
+          email,
+          status: 'failed',
+          error: 'SMTP 550 5.1.1 Recipient address rejected: User unknown',
+        }
+      }
+      return {
+        candidate_id: r.candidate_id,
+        email,
+        status: 'sent',
+      }
+    })
+    return { sent: results }
+  },
 }
 
 // ==========================================
@@ -601,6 +676,7 @@ export const mockApi = {
 export const httpApi = {
   health: async (): Promise<{ status: string; version: string; database?: string }> => {
     const res = await fetch(`${API_BASE_URL}/health`)
+    checkSyntheticResponse(res)
     if (!res.ok) throw new ApiError(res.status, 'Health check failed.')
     const data = await res.json()
     return HealthResponseSchema.parse(data)
@@ -652,6 +728,7 @@ export const httpApi = {
     if (params.page_size !== undefined) searchParams.append('page_size', String(params.page_size))
 
     const res = await fetch(`${API_BASE_URL}/candidates?${searchParams.toString()}`)
+    checkSyntheticResponse(res)
     if (!res.ok) throw new ApiError(res.status, 'Failed to load candidates.')
     const data = await res.json()
     const parsed = CandidatesListResponseSchema.parse(data)
@@ -686,6 +763,7 @@ export const httpApi = {
 
   getJobs: async (): Promise<Job[]> => {
     const res = await fetch(`${API_BASE_URL}/jobs`)
+    checkSyntheticResponse(res)
     if (!res.ok) throw new ApiError(res.status, 'Failed to list jobs.')
     const data = await res.json()
     return (data || []).map((raw: any) => fromApiJob(raw))
@@ -724,6 +802,7 @@ export const httpApi = {
 
   getJobRanking: async (jobId: string): Promise<JobRankingResponse> => {
     const res = await fetch(`${API_BASE_URL}/jobs/${jobId}/ranking`)
+    checkSyntheticResponse(res)
     if (!res.ok) throw new ApiError(res.status, 'Failed to retrieve job rankings.')
     const data = await res.json()
     const parsed = JobRankingResponseSchema.parse(data)
@@ -748,6 +827,7 @@ export const httpApi = {
       ? `${API_BASE_URL}/applications?job_id=${encodeURIComponent(jobId)}`
       : `${API_BASE_URL}/applications`
     const res = await fetch(url)
+    checkSyntheticResponse(res)
     if (!res.ok) throw new ApiError(res.status, 'Failed to fetch applications.')
     const data = await res.json()
     return (data || []).map((raw: any) => fromApiApplication(raw))
@@ -776,6 +856,7 @@ export const httpApi = {
     if (jobId) params.append('job_id', jobId)
 
     const res = await fetch(`${API_BASE_URL}/compare?${params.toString()}`)
+    checkSyntheticResponse(res)
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'Comparison failed.' }))
       throw new ApiError(res.status, err.detail || 'Failed to compare candidates.')
@@ -788,6 +869,21 @@ export const httpApi = {
         candidate: fromApiCandidate(item.candidate || item),
       })),
     }
+  },
+
+  sendBulkEmail: async (payload: SendBulkEmailRequest): Promise<SendBulkEmailResponse> => {
+    const res = await fetch(`${API_BASE_URL}/email/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    checkSyntheticResponse(res)
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Email sending is not enabled on this server.' }))
+      throw new ApiError(res.status, err.detail || 'Email sending is not enabled on this server.')
+    }
+    const data = await res.json()
+    return SendBulkEmailResponseSchema.parse(data)
   },
 }
 

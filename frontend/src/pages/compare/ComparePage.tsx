@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
 import { api, USE_MOCK, CompareCandidateItem } from '@/api'
@@ -45,7 +45,8 @@ export const ComparePage: React.FC = () => {
     : liveJobs
 
   // Target job
-  const [selectedJobId, setSelectedJobId] = useState<string>('')
+  const initialJobId = searchParams.get('job_id') || searchParams.get('jobId') || ''
+  const [selectedJobId, setSelectedJobId] = useState<string>(initialJobId)
 
   // Selected candidate IDs: strictly 2 to 3 candidates per plan!
   const initialIds = (searchParams.get('candidateIds') || searchParams.get('ids') || '').split(',').filter(Boolean)
@@ -63,8 +64,11 @@ export const ComparePage: React.FC = () => {
         .then(([jList, cList]) => {
           setLiveJobs(jList)
           setLiveCandidates(cList.items)
-          if (jList.length > 0 && !selectedJobId) {
-            setSelectedJobId(jList[0].id)
+          if (jList.length > 0) {
+            if (!selectedJobId) {
+              const matched = initialJobId ? jList.find((j) => j.id === initialJobId) : null
+              setSelectedJobId(matched ? matched.id : jList[0].id)
+            }
           }
           if (selectedIds.length < 2 && cList.items.length >= 2) {
             setSelectedIds([cList.items[0].id, cList.items[1].id])
@@ -170,8 +174,26 @@ export const ComparePage: React.FC = () => {
   const highestExp = Math.max(...selectedCandidates.map((c) => c.experienceYears ?? 0), 0)
   const mostSkillsMatched = Math.max(...evaluatedComparisons.map((c) => c.matchedSkills.length), 0)
 
-  // Top overall recommendation pick
-  const topPick = evaluatedComparisons.slice().sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0]
+  // Top overall recommendation pick built ONLY from API fields (highest score, fewest missing skills)
+  const overallPick = useMemo(() => {
+    if (evaluatedComparisons.length === 0) return null
+    const sorted = [...evaluatedComparisons].sort((a, b) => {
+      const scoreA = a.score ?? -1
+      const scoreB = b.score ?? -1
+      if (scoreB !== scoreA) return scoreB - scoreA
+      const missingA = a.missingSkills?.length ?? 999
+      const missingB = b.missingSkills?.length ?? 999
+      return missingA - missingB
+    })
+    const best = sorted[0]
+    const bestScoreStr = best.score != null ? `${best.score}%` : '-'
+    const missingCount = best.missingSkills?.length ?? 0
+    const summary = `Highest evaluated score (${bestScoreStr}) with ${missingCount} missing competency requirement(s).`
+    return {
+      ...best,
+      summary,
+    }
+  }, [evaluatedComparisons])
 
   const handleAddCandidate = (candId: string) => {
     if (!candId) return
@@ -283,9 +305,9 @@ export const ComparePage: React.FC = () => {
         </div>
       )}
 
-      {/* Top AI Decision Card */}
-      {topPick && (
-        <div className="bg-gradient-to-r from-indigo-50/90 via-purple-50/50 to-white rounded-xl border border-indigo-100 p-4 shadow-soft flex items-center justify-between gap-4">
+      {/* Top Decision Card: Suggested from scores */}
+      {overallPick && (
+        <div className="bg-gradient-to-r from-indigo-50/90 via-purple-50/50 to-white rounded-xl border border-indigo-100 p-4 shadow-soft flex items-center justify-between gap-4" data-testid="overall-pick-card">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center font-bold text-lg shadow-sm">
               <Award className="w-5 h-5 text-amber-300" />
@@ -293,14 +315,16 @@ export const ComparePage: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-indigo-900">
-                  HireSwift AI Hiring Recommendation for {activeJob?.title}
+                  Suggested from scores for {activeJob?.title}
                 </span>
-                <Badge variant="default" size="sm">Top Fit ({topPick.score}%)</Badge>
+                <Badge variant="default" size="sm">
+                  Top Score ({overallPick.score != null ? `${overallPick.score}%` : '-'})
+                </Badge>
               </div>
               <h3 className="text-base font-extrabold text-text mt-0.5">
-                {isBlindMode ? 'Candidate #' + topPick.candidate.id : topPick.candidate.name}
+                {isBlindMode ? 'Candidate #' + overallPick.candidate.id : overallPick.candidate.name}
               </h3>
-              <p className="text-xs text-muted">{topPick.explanation}</p>
+              <p className="text-xs text-muted" data-testid="suggested-summary">{overallPick.summary}</p>
             </div>
           </div>
 
@@ -308,9 +332,9 @@ export const ComparePage: React.FC = () => {
             variant="primary"
             size="sm"
             leftIcon={<CheckCircle className="w-4 h-4" />}
-            onClick={() => handleShortlistCandidate(topPick.appId, topPick.candidate.name)}
+            onClick={() => handleShortlistCandidate(overallPick.appId, overallPick.candidate.name)}
           >
-            Shortlist {isBlindMode ? 'Top Pick' : topPick.candidate.name.split(' ')[0]}
+            Shortlist {isBlindMode ? 'Top Pick' : overallPick.candidate.name.split(' ')[0]}
           </Button>
         </div>
       )}
@@ -470,9 +494,9 @@ export const ComparePage: React.FC = () => {
                 })}
               </tr>
 
-              {/* Row 6: Missing Skills Gap */}
-              <tr>
-                <td className="p-4 font-semibold text-text">Missing Skill Gaps</td>
+              {/* Row 6: Skill gap vs job */}
+              <tr data-testid="compare-skill-gap-row">
+                <td className="p-4 font-semibold text-text">Skill gap vs job</td>
                 {evaluatedComparisons.map(({ candidate, missingSkills }) => (
                   <td key={candidate.id} className="p-4">
                     {missingSkills.length === 0 ? (

@@ -24,7 +24,7 @@ export const FEATURES: FeatureFlags = {
   enableEmails: true,
   enableSettings: false,
   enableDuplicates: true,
-  enableDashboard: false,
+  enableDashboard: true,
 }
 
 export const isFeatureEnabled = (feature: keyof FeatureFlags): boolean => {

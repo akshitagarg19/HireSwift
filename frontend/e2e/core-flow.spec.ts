@@ -55,7 +55,7 @@ test.describe('HireSwift ATS Core Recruitment Flow', () => {
     await page.click('a[href="/app/compare"]')
     await expect(page).toHaveURL(/.*\/app\/compare/)
     await expect(page.getByText('Side-by-Side Candidate Comparison')).toBeVisible()
-    await expect(page.getByText('HireSwift AI Hiring Recommendation')).toBeVisible()
+    await expect(page.getByText(/Suggested from scores|HireSwift AI Hiring Recommendation/i)).toBeVisible()
 
     // 10. Send Email
     const emailLink = page.locator('a[href="/app/emails"]')
@@ -65,11 +65,15 @@ test.describe('HireSwift ATS Core Recruitment Flow', () => {
       await page.goto('/app/emails')
     }
     await expect(page).toHaveURL(/.*\/app\/emails/)
-    await expect(page.getByText('Email Communications & Automation')).toBeVisible()
+    await expect(page.getByText(/Bulk Email to Shortlisted Candidates|Email Communications/i)).toBeVisible()
     await expect(page.getByText('Live Preview')).toBeVisible()
 
     await page.click('button:has-text("Send to")')
-    await expect(page.getByText(/Successfully dispatched/i)).toBeVisible()
+    const confirmBtn = page.getByRole('button', { name: /Send .* Emails/i })
+    if (await confirmBtn.isVisible()) {
+      await confirmBtn.click()
+    }
+    await expect(page.getByText(/Successfully dispatched|Batch dispatch completed/i)).toBeVisible()
 
     // 11. Verify Duplicates module (active per plan)
     const dupsLink = page.locator('a[href="/app/duplicates"]')

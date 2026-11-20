@@ -77,7 +77,7 @@ export const App: React.FC = () => {
               </ProtectedRoute>
             }
           >
-            <Route index element={<Navigate to="/app/upload" replace />} />
+            <Route index element={<Navigate to="/app/dashboard" replace />} />
             <Route
               path="dashboard"
               element={isFeatureEnabled('enableDashboard') ? <DashboardPage /> : <Navigate to="/app/candidates" replace />}

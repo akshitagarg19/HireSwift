@@ -146,9 +146,13 @@ interface KanbanColumnProps {
 
 const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, applications, onCardClick, onMoveTo }) => {
   const navigate = useNavigate()
+  const [displayLimit, setDisplayLimit] = useState(50)
   const { setNodeRef, isOver } = useDroppable({
     id: stage.id,
   })
+
+  const visibleApps = applications.slice(0, displayLimit)
+  const hasMore = applications.length > displayLimit
 
   return (
     <div
@@ -189,15 +193,27 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, applications, onCard
             No candidates
           </div>
         ) : (
-          applications.map(({ application, candidate }) => (
-            <KanbanCard
-              key={application.application_id || application.id}
-              application={application}
-              candidate={candidate}
-              onClick={() => onCardClick(candidate.id)}
-              onMoveTo={onMoveTo}
-            />
-          ))
+          <>
+            {visibleApps.map(({ application, candidate }) => (
+              <KanbanCard
+                key={application.application_id || application.id}
+                application={application}
+                candidate={candidate}
+                onClick={() => onCardClick(candidate.id)}
+                onMoveTo={onMoveTo}
+              />
+            ))}
+            {hasMore && (
+              <button
+                type="button"
+                data-testid={`show-more-${stage.id}`}
+                onClick={() => setDisplayLimit((prev) => prev + 50)}
+                className="w-full py-2 px-3 text-xs font-semibold text-primary bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors text-center"
+              >
+                Show more (+{Math.min(50, applications.length - displayLimit)}) — {visibleApps.length} of {applications.length}
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

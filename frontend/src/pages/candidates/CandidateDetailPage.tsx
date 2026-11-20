@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
 import { api, USE_MOCK } from '@/api'
-import { Candidate } from '@/types'
+import { Candidate, Job, Application } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
@@ -31,6 +31,7 @@ import {
   Layers,
 } from 'lucide-react'
 import { matchScore } from '@/lib/scoring'
+import { getSkillLearnHint } from '@/lib/skillHints'
 import { isReadOnlyViewer } from '@/lib/permissions'
 import { DEFAULT_DEMO_COMPANY } from '@/types'
 
@@ -53,8 +54,12 @@ export const CandidateDetailPage: React.FC = () => {
   } = useAppStore()
 
   const [liveCandidate, setLiveCandidate] = useState<Candidate | null>(null)
+  const [liveJobs, setLiveJobs] = useState<Job[]>([])
+  const [liveApplications, setLiveApplications] = useState<Application[]>([])
   const [isLoadingCand, setIsLoadingCand] = useState(!USE_MOCK)
   const [error, setError] = useState<string | null>(null)
+
+  const [selectedJobId, setSelectedJobId] = useState<string>('')
 
   const fetchCandidate = useCallback(async () => {
     if (!id) return
@@ -62,14 +67,27 @@ export const CandidateDetailPage: React.FC = () => {
     setIsLoadingCand(true)
     setError(null)
     try {
-      const c = await api.getCandidate(id)
+      const [c, jList, aList] = await Promise.all([
+        api.getCandidate(id),
+        api.getJobs(),
+        api.getApplications(),
+      ])
       setLiveCandidate(c)
+      setLiveJobs(jList)
+      const candApps = aList.filter((a) => a.candidateId === id || (a as any).candidate_id === id)
+      setLiveApplications(candApps)
+
+      if (candApps.length > 0 && !selectedJobId) {
+        setSelectedJobId(candApps[0].jobId)
+      } else if (jList.length > 0 && !selectedJobId) {
+        setSelectedJobId(jList[0].id)
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load candidate.')
     } finally {
       setIsLoadingCand(false)
     }
-  }, [id])
+  }, [id, selectedJobId])
 
   useEffect(() => {
     fetchCandidate()
@@ -80,12 +98,17 @@ export const CandidateDetailPage: React.FC = () => {
   const company = USE_MOCK
     ? (companies.find((c) => c.id === currentCompanyId) || companies[0])
     : DEFAULT_DEMO_COMPANY
-  const companyJobs = USE_MOCK ? jobs.filter((j) => j.companyId === currentCompanyId) : []
+  const companyJobs = USE_MOCK ? jobs.filter((j) => j.companyId === currentCompanyId) : liveJobs
 
   // Find existing applications for this candidate
-  const candidateApps = USE_MOCK ? applications.filter((a) => a.candidateId === id) : []
-  const initialJobId = candidateApps[0]?.jobId || companyJobs[0]?.id || ''
-  const [selectedJobId, setSelectedJobId] = useState<string>(initialJobId)
+  const candidateApps = USE_MOCK ? applications.filter((a) => a.candidateId === id) : liveApplications
+
+  useEffect(() => {
+    if (USE_MOCK && !selectedJobId) {
+      const initial = candidateApps[0]?.jobId || companyJobs[0]?.id || ''
+      if (initial) setSelectedJobId(initial)
+    }
+  }, [candidateApps, companyJobs, selectedJobId])
 
   // Modals & form state
   const [rejectModalOpen, setRejectModalOpen] = useState(false)
@@ -627,7 +650,7 @@ export const CandidateDetailPage: React.FC = () => {
                 {!activeApp?.notes || activeApp.notes.length === 0 ? (
                   <p className="text-xs text-muted italic">No notes added yet.</p>
                 ) : (
-                  activeApp.notes.map((note) => (
+                  activeApp.notes.map((note: any) => (
                     <div key={note.id} className="p-3 rounded-lg border border-border bg-gray-50 text-xs">
                       <div className="flex justify-between items-center text-muted text-[10px] mb-1">
                         <span className="font-semibold text-text">{note.authorName}</span>
@@ -641,9 +664,35 @@ export const CandidateDetailPage: React.FC = () => {
             </TabsContent>
 
             {/* TAB: Resume Raw Text with Highlights */}
-            <TabsContent value="resume" className="mt-4">
-              <div className="p-4 bg-gray-50 rounded-lg border border-border font-mono text-xs whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto text-text">
-                {candidate.resumeText}
+            <TabsContent value="resume" className="mt-4 space-y-2">
+              <div className="flex items-center justify-between text-xs text-muted px-1">
+                <span>Resume Raw Text</span>
+                <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  Matched Skills Highlighted ({displayMatched.length})
+                </span>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-lg border border-border font-mono text-xs whitespace-pre-wrap leading-relaxed max-h-96 overflow-y-auto text-text" data-testid="resume-text-view">
+                {(() => {
+                  if (!candidate.resumeText) return 'No resume text available.'
+                  if (!displayMatched.length) return candidate.resumeText
+                  const escaped = displayMatched.map((s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+                  const regex = new RegExp(`\\b(${escaped.join('|')})\\b`, 'gi')
+                  const parts = candidate.resumeText.split(regex)
+                  return parts.map((part, i) => {
+                    const isMatched = displayMatched.some((s: string) => s.toLowerCase() === part.toLowerCase())
+                    if (isMatched) {
+                      return (
+                        <mark
+                          key={i}
+                          className="bg-emerald-200 text-emerald-950 font-bold px-1 rounded mx-0.5 border border-emerald-300"
+                        >
+                          {part}
+                        </mark>
+                      )
+                    }
+                    return part
+                  })
+                })()}
               </div>
             </TabsContent>
 
@@ -728,7 +777,7 @@ export const CandidateDetailPage: React.FC = () => {
               {activeApp?.scorecards && activeApp.scorecards.length > 0 && (
                 <div className="space-y-2 pt-2">
                   <h4 className="text-xs font-bold text-muted">Submitted Evaluations:</h4>
-                  {activeApp.scorecards.map((sc) => (
+                  {activeApp.scorecards.map((sc: any) => (
                     <div key={sc.id} className="p-3 bg-white rounded-lg border border-border text-xs space-y-1">
                       <div className="flex justify-between font-bold text-text">
                         <span>{sc.interviewerName}</span>
@@ -834,7 +883,7 @@ export const CandidateDetailPage: React.FC = () => {
                   {displayMatched.length === 0 ? (
                     <span className="text-xs text-muted">No overlapping skills</span>
                   ) : (
-                    displayMatched.map((s) => (
+                    displayMatched.map((s: string) => (
                       <SkillChip key={s} name={s} status="matched" size="sm" />
                     ))
                   )}
@@ -850,7 +899,7 @@ export const CandidateDetailPage: React.FC = () => {
                   {displayMissing.length === 0 ? (
                     <span className="text-xs text-emerald-600 font-medium">All required skills present!</span>
                   ) : (
-                    displayMissing.map((s) => (
+                    displayMissing.map((s: string) => (
                       <SkillChip key={s} name={s} status="missing" size="sm" />
                     ))
                   )}
@@ -863,6 +912,29 @@ export const CandidateDetailPage: React.FC = () => {
               <span className="font-bold block mb-0.5">Scoring Engine Assessment:</span>
               <p className="leading-relaxed">{displayExplanation}</p>
             </div>
+
+            {/* Skill Gap & Learn Hints */}
+            {displayMissing.length > 0 && (
+              <div className="p-3 bg-white rounded-lg border border-border space-y-2" data-testid="detail-skill-gap-list">
+                <div className="text-xs font-bold text-text uppercase tracking-wider flex items-center gap-1.5">
+                  <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Skill Gap &amp; Next Steps for {activeJob?.title}</span>
+                </div>
+                <div className="space-y-1.5 pt-1">
+                  {displayMissing.map((ms: string) => (
+                    <div key={ms} className="p-2 bg-rose-50/50 rounded border border-rose-100 text-xs">
+                      <div className="flex items-center gap-1.5 font-bold text-text">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                        <span>Missing for role: {ms}</span>
+                      </div>
+                      <div className="text-[11px] text-muted mt-0.5">
+                        💡 <em>Learn hint:</em> {getSkillLearnHint(ms)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

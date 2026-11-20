@@ -67,9 +67,10 @@ test.describe('Task 5: Frontend Polish, Responsiveness & Accessibility Suite', (
     await page.screenshot({ path: path.join(screensDir, 'mobile-390-upload.png') })
   })
 
-  test('2. Accessibility Scan with Axe-Core (Home, Upload, Candidates, Pipeline, Compare)', async ({ page }) => {
+  test('2. Accessibility Scan with Axe-Core (Home, Dashboard, Upload, Candidates, Pipeline, Compare)', async ({ page }) => {
     const targetPages = [
       { name: 'Home', url: '/' },
+      { name: 'Dashboard', url: '/app/dashboard' },
       { name: 'Upload', url: '/app/upload' },
       { name: 'Candidates', url: '/app/candidates' },
       { name: 'Pipeline', url: '/app/pipeline' },

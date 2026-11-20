@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useAppStore } from '@/store'
-import { api, USE_MOCK } from '@/api'
+import { api, USE_MOCK, EmailSendResultItem } from '@/api/client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { toast } from 'sonner'
 import {
   Mail,
@@ -17,11 +16,15 @@ import {
   Eye,
   Plus,
   Trash2,
-  Edit,
   CheckCircle2,
   Clock,
   Sparkles,
   AlertTriangle,
+  Copy,
+  Download,
+  ExternalLink,
+  Info,
+  XCircle,
 } from 'lucide-react'
 import { EmailTemplate, Candidate, Job, Application } from '@/types'
 
@@ -30,8 +33,8 @@ const DEFAULT_EMAIL_TEMPLATES: EmailTemplate[] = [
     id: 'tmpl-1',
     companyId: 'company-nova',
     name: 'Interview Invitation',
-    subject: 'Interview Invitation: {{job_title}} at HireSwift Demo',
-    body: 'Hi {{candidate_name}},\n\nWe were impressed by your background and would love to invite you for an interview for the {{job_title}} position.\n\nProposed Time: {{interview_date}}\n\nPlease let us know if this works for you.\n\nBest regards,\nHiring Team',
+    subject: 'Interview Invitation: {{job_title}} at {{company_name}}',
+    body: 'Hi {{candidate_name}},\n\nWe were impressed by your background and would love to invite you for an interview for the {{job_title}} position.\n\nProposed Time: {{interview_date}}\n\nPlease let us know if this works for you.\n\nBest regards,\nHiring Team at {{company_name}}',
     type: 'Interview',
   },
   {
@@ -39,7 +42,7 @@ const DEFAULT_EMAIL_TEMPLATES: EmailTemplate[] = [
     companyId: 'company-nova',
     name: 'Application Shortlisted',
     subject: 'Application Update: Shortlisted for {{job_title}}',
-    body: 'Dear {{candidate_name}},\n\nGreat news! Your profile has been shortlisted for the {{job_title}} role at HireSwift Demo. Our recruitment team will be in touch shortly with next steps.\n\nBest regards,\nTalent Acquisition Team',
+    body: 'Dear {{candidate_name}},\n\nGreat news! Your profile has been shortlisted for the {{job_title}} role at {{company_name}}. Our recruitment team will be in touch shortly with next steps.\n\nBest regards,\nTalent Acquisition Team',
     type: 'Shortlist',
   },
   {
@@ -52,30 +55,75 @@ const DEFAULT_EMAIL_TEMPLATES: EmailTemplate[] = [
   },
 ]
 
+interface LocalEmailLog {
+  id: string
+  recipientName: string
+  recipientEmail: string
+  subject: string
+  status: 'Sent' | 'Failed' | 'Scheduled'
+  error?: string
+  sentAt: string
+}
+
 export const EmailsPage: React.FC = () => {
   const [searchParams] = useSearchParams()
-  const {
-    currentCompanyId,
-    companies,
-    candidates,
-    jobs,
-    applications,
-    emailTemplates,
-    emailLogs,
-    sendEmail,
-    addEmailTemplate,
-    deleteEmailTemplate,
-  } = useAppStore()
 
-  // Live mode data state
+  // Live mode data state (no seed store fallback)
   const [liveCandidates, setLiveCandidates] = useState<Candidate[]>([])
   const [liveJobs, setLiveJobs] = useState<Job[]>([])
   const [liveApplications, setLiveApplications] = useState<Application[]>([])
-  const [loading, setLoading] = useState(!USE_MOCK)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Job Filter
+  const [selectedJobId, setSelectedJobId] = useState<string>('all')
+
+  // Templates & Form State
+  const [templates, setTemplates] = useState<EmailTemplate[]>(DEFAULT_EMAIL_TEMPLATES)
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(DEFAULT_EMAIL_TEMPLATES[0].id)
+  const [subject, setSubject] = useState(DEFAULT_EMAIL_TEMPLATES[0].subject)
+  const [body, setBody] = useState(DEFAULT_EMAIL_TEMPLATES[0].body)
+  const [interviewDate, setInterviewDate] = useState('Next Tuesday at 2:00 PM IST')
+  const [activePreviewIndex, setActivePreviewIndex] = useState(0)
+
+  // Recipients
+  const [selectedRecipientIds, setSelectedRecipientIds] = useState<string[]>([])
+
+  // Modal & Dialog state
+  const [showConfirmModal, setShowConfirmModal] = useState(false)
+  const [isSending, setIsSending] = useState(false)
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
+  const [newTemplateName, setNewTemplateName] = useState('')
+  const [newTemplateType, setNewTemplateType] = useState<EmailTemplate['type']>('General')
+  const [newTemplateSubject, setNewTemplateSubject] = useState('')
+  const [newTemplateBody, setNewTemplateBody] = useState('')
+
+  // Results & Fallback Mode
+  const [sendResults, setSendResults] = useState<EmailSendResultItem[] | null>(null)
+  const [isFallbackMode, setIsFallbackMode] = useState(false)
+  const [fallbackReason, setFallbackReason] = useState<string>('')
+
+  // Local email logs persisted in localStorage
+  const [emailLogs, setEmailLogs] = useState<LocalEmailLog[]>(() => {
+    try {
+      const stored = localStorage.getItem('hireswift_email_logs')
+      return stored ? JSON.parse(stored) : []
+    } catch {
+      return []
+    }
+  })
+
+  const saveEmailLogs = (newLogs: LocalEmailLog[]) => {
+    setEmailLogs(newLogs)
+    try {
+      localStorage.setItem('hireswift_email_logs', JSON.stringify(newLogs))
+    } catch {
+      // Storage unavailable or full
+    }
+  }
+
+  // Load API data
   const fetchEmailData = useCallback(async () => {
-    if (USE_MOCK) return
     setLoading(true)
     setError(null)
     try {
@@ -87,73 +135,66 @@ export const EmailsPage: React.FC = () => {
       setLiveCandidates(candRes.items)
       setLiveJobs(jobRes)
       setLiveApplications(appRes)
+
+      const urlJob = searchParams.get('job_id')
+      if (urlJob && jobRes.some((j) => j.id === urlJob)) {
+        setSelectedJobId(urlJob)
+      }
     } catch (err: any) {
       setError(err?.message || 'Failed to load email recipients.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [searchParams])
 
   useEffect(() => {
     fetchEmailData()
   }, [fetchEmailData])
 
-  const company = USE_MOCK
-    ? (companies.find((c) => c.id === currentCompanyId) || companies[0])
-    : { id: 'company-nova', name: 'HireSwift Demo', domain: 'hireswift.demo' }
+  // Company Name helper
+  const companyName = 'HireSwift Demo'
 
-  const companyTemplates = USE_MOCK
-    ? emailTemplates.filter((t) => t.companyId === currentCompanyId)
-    : DEFAULT_EMAIL_TEMPLATES
+  // Filter candidates relevant to the selected job & shortlisted status
+  const { eligibleCandidates, excludedWithoutEmailCount } = useMemo(() => {
+    const apps = liveApplications.filter((a) => {
+      if (selectedJobId !== 'all' && a.jobId !== selectedJobId) return false
+      return a.stage === 'shortlisted'
+    })
 
-  const companyCandidates = USE_MOCK
-    ? candidates.filter((c) => c.companyId === currentCompanyId)
-    : liveCandidates
+    const shortlistedCandidateIds = new Set(apps.map((a) => a.candidateId))
+    const matching = liveCandidates.filter((c) => shortlistedCandidateIds.has(c.id))
 
-  const companyJobs = USE_MOCK
-    ? jobs.filter((j) => j.companyId === currentCompanyId)
-    : liveJobs
+    const validWithEmail: Candidate[] = []
+    let withoutEmail = 0
 
-  const activeApplications = USE_MOCK
-    ? applications.filter((a) => a.companyId === currentCompanyId)
-    : liveApplications
+    matching.forEach((c) => {
+      if (c.email && c.email.trim().length > 0) {
+        validWithEmail.push(c)
+      } else {
+        withoutEmail++
+      }
+    })
 
-  // Recipients filter
-  const recipientQuery = searchParams.get('recipientIds')
-  const defaultRecipientIds = useMemo(() => {
-    if (recipientQuery) return recipientQuery.split(',').filter(Boolean)
-    return activeApplications
-      .filter((a) => a.stage === 'shortlisted')
-      .map((a) => a.candidateId)
-  }, [recipientQuery, activeApplications])
-
-  const [selectedRecipientIds, setSelectedRecipientIds] = useState<string[]>(defaultRecipientIds)
-
-  useEffect(() => {
-    if (defaultRecipientIds.length > 0 && selectedRecipientIds.length === 0) {
-      setSelectedRecipientIds(defaultRecipientIds)
+    return {
+      eligibleCandidates: validWithEmail,
+      excludedWithoutEmailCount: withoutEmail,
     }
-  }, [defaultRecipientIds])
+  }, [liveApplications, liveCandidates, selectedJobId])
 
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(companyTemplates[0]?.id || '')
-
-  // Email form fields
-  const [subject, setSubject] = useState(companyTemplates[0]?.subject || '')
-  const [body, setBody] = useState(companyTemplates[0]?.body || '')
-  const [interviewDate, setInterviewDate] = useState('Next Tuesday at 2:00 PM IST')
-  const [activePreviewIndex, setActivePreviewIndex] = useState(0)
-
-  // Template Manager Modal
-  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
-  const [newTemplateName, setNewTemplateName] = useState('')
-  const [newTemplateType, setNewTemplateType] = useState<EmailTemplate['type']>('General')
-  const [newTemplateSubject, setNewTemplateSubject] = useState('')
-  const [newTemplateBody, setNewTemplateBody] = useState('')
+  // Default selected recipients to eligible shortlisted candidates
+  useEffect(() => {
+    const urlRecipientIds = searchParams.get('recipientIds')?.split(',').filter(Boolean)
+    if (urlRecipientIds && urlRecipientIds.length > 0) {
+      setSelectedRecipientIds(urlRecipientIds)
+    } else {
+      setSelectedRecipientIds(eligibleCandidates.map((c) => c.id))
+    }
+  }, [eligibleCandidates, searchParams])
 
   // Update subject and body when template changes
   const handleSelectTemplate = (templateId: string) => {
     setSelectedTemplateId(templateId)
-    const tpl = companyTemplates.find((t) => t.id === templateId)
+    const tpl = templates.find((t) => t.id === templateId)
     if (tpl) {
       setSubject(tpl.subject)
       setBody(tpl.body)
@@ -165,15 +206,14 @@ export const EmailsPage: React.FC = () => {
     setBody((prev) => `${prev} {{${tag}}}`)
   }
 
-  // Dynamic template variable replacement for live preview
+  // Render content for a candidate
   const getRenderedContent = (candidateId: string) => {
-    const cand = companyCandidates.find((c) => c.id === candidateId)
-    const candApp = applications.find((a) => a.candidateId === candidateId)
-    const job = companyJobs.find((j) => j.id === candApp?.jobId) || companyJobs[0]
+    const cand = liveCandidates.find((c) => c.id === candidateId)
+    const candApp = liveApplications.find((a) => a.candidateId === candidateId)
+    const job = liveJobs.find((j) => j.id === candApp?.jobId) || liveJobs[0]
 
     const candName = cand?.name || 'Candidate'
     const jobTitle = job?.title || 'Open Position'
-    const companyName = company.name
 
     const renderedSubject = subject
       .replace(/\{\{candidate_name\}\}/g, candName)
@@ -190,54 +230,150 @@ export const EmailsPage: React.FC = () => {
     return { renderedSubject, renderedBody, cand, job }
   }
 
-  // Send action
-  const handleSendEmails = () => {
+  // Initiate send modal
+  const handleInitiateSend = () => {
     if (selectedRecipientIds.length === 0) {
       toast.error('Select at least one recipient.')
       return
     }
-
-    selectedRecipientIds.forEach((candId) => {
-      const { renderedSubject, renderedBody, cand } = getRenderedContent(candId)
-      if (cand) {
-        sendEmail({
-          companyId: currentCompanyId,
-          recipientEmail: cand.email,
-          recipientName: cand.name,
-          subject: renderedSubject,
-          body: renderedBody,
-          status: 'Sent',
-        })
-      }
-    })
-
-    toast.success(`Successfully dispatched ${selectedRecipientIds.length} emails!`)
+    setShowConfirmModal(true)
   }
 
-  const handleScheduleEmails = () => {
-    if (selectedRecipientIds.length === 0) {
-      toast.error('Select at least one recipient.')
+  // Execute Send
+  const handleConfirmSend = async () => {
+    setShowConfirmModal(false)
+    setIsSending(true)
+    setSendResults(null)
+
+    const recipientsPayload = selectedRecipientIds
+      .map((id) => {
+        const { renderedSubject, renderedBody, cand } = getRenderedContent(id)
+        if (!cand || !cand.email) return null
+        return {
+          candidate_id: cand.id,
+          to: cand.email,
+          subject: renderedSubject,
+          body: renderedBody,
+        }
+      })
+      .filter(Boolean) as Array<{ candidate_id: string; to: string; subject: string; body: string }>
+
+    try {
+      const response = await api.sendBulkEmail({
+        job_id: selectedJobId !== 'all' ? selectedJobId : undefined,
+        recipients: recipientsPayload,
+        include_test_failure: true,
+      })
+
+      setSendResults(response.sent)
+      setIsFallbackMode(false)
+
+      // Add to local audit logs
+      const newLogs: LocalEmailLog[] = response.sent.map((res) => {
+        const { renderedSubject, cand } = getRenderedContent(res.candidate_id)
+        return {
+          id: `log-${Date.now()}-${res.candidate_id}`,
+          recipientName: cand?.name || res.candidate_id,
+          recipientEmail: res.email,
+          subject: renderedSubject,
+          status: res.status === 'sent' ? 'Sent' : 'Failed',
+          error: res.error,
+          sentAt: new Date().toISOString(),
+        }
+      })
+      saveEmailLogs([...newLogs, ...emailLogs])
+
+      const sentCount = response.sent.filter((s) => s.status === 'sent').length
+      const failedCount = response.sent.filter((s) => s.status === 'failed').length
+
+      if (failedCount > 0) {
+        toast.warning(`Email batch processed: ${sentCount} sent, ${failedCount} failed.`)
+      } else {
+        toast.success(`Successfully dispatched ${sentCount} emails!`)
+      }
+    } catch (err: any) {
+      // Endpoint missing or error -> Switch to FALLBACK mode
+      setIsFallbackMode(true)
+      setFallbackReason(err?.message || 'Email sending is not enabled on this server.')
+      toast.error('Email sending is not enabled on this server. Manual fallback actions activated.')
+    } finally {
+      setIsSending(false)
+    }
+  }
+
+  // Fallback Action 1: Copy All Emails
+  const handleCopyAllEmails = () => {
+    const emails = selectedRecipientIds
+      .map((id) => liveCandidates.find((c) => c.id === id)?.email)
+      .filter(Boolean)
+      .join(', ')
+    if (!emails) {
+      toast.error('No emails to copy.')
+      return
+    }
+    navigator.clipboard.writeText(emails)
+    toast.success(`Copied ${selectedRecipientIds.length} recipient email addresses to clipboard!`)
+  }
+
+  // Fallback Action 2: Open in Mail Client (with 40 recipient BCC chunking)
+  const handleOpenMailClient = () => {
+    const validEmails = selectedRecipientIds
+      .map((id) => liveCandidates.find((c) => c.id === id)?.email)
+      .filter(Boolean) as string[]
+
+    if (validEmails.length === 0) {
+      toast.error('No recipients available.')
       return
     }
 
-    selectedRecipientIds.forEach((candId) => {
-      const { renderedSubject, renderedBody, cand } = getRenderedContent(candId)
-      if (cand) {
-        sendEmail({
-          companyId: currentCompanyId,
-          recipientEmail: cand.email,
-          recipientName: cand.name,
-          subject: renderedSubject,
-          body: renderedBody,
-          status: 'Scheduled',
-          scheduledFor: new Date(Date.now() + 86400000).toISOString(),
-        })
-      }
-    })
+    // Chunk into groups of 40 to avoid mailto URL overflow
+    const chunkSize = 40
+    const chunks = []
+    for (let i = 0; i < validEmails.length; i += chunkSize) {
+      chunks.push(validEmails.slice(i, i + chunkSize))
+    }
 
-    toast.success(`Scheduled ${selectedRecipientIds.length} emails for tomorrow at 9:00 AM!`)
+    if (chunks.length > 1) {
+      toast.info(
+        `Recipients split into ${chunks.length} batches of 40 to avoid URL length limitations.`
+      )
+    }
+
+    const firstChunk = chunks[0]
+    const mailtoUrl = `mailto:?bcc=${encodeURIComponent(firstChunk.join(','))}&subject=${encodeURIComponent(
+      subject
+    )}&body=${encodeURIComponent(body)}`
+    window.open(mailtoUrl, '_blank')
   }
 
+  // Fallback Action 3: Download CSV
+  const handleDownloadCsv = () => {
+    const rows = [
+      ['Candidate ID', 'Candidate Name', 'Email', 'Rendered Subject', 'Rendered Body'],
+      ...selectedRecipientIds.map((id) => {
+        const { renderedSubject, renderedBody, cand } = getRenderedContent(id)
+        return [
+          cand?.id || id,
+          `"${(cand?.name || '').replace(/"/g, '""')}"`,
+          `"${(cand?.email || '').replace(/"/g, '""')}"`,
+          `"${renderedSubject.replace(/"/g, '""')}"`,
+          `"${renderedBody.replace(/"/g, '""')}"`,
+        ]
+      }),
+    ]
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + rows.map((e) => e.join(',')).join('\n')
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement('a')
+    link.setAttribute('href', encodedUri)
+    link.setAttribute('download', 'shortlisted_recipients_export.csv')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    toast.success('Downloaded recipients export CSV!')
+  }
+
+  // Template Manager: Add new template
   const handleCreateTemplate = (e: React.FormEvent) => {
     e.preventDefault()
     if (!newTemplateName || !newTemplateSubject || !newTemplateBody) {
@@ -245,14 +381,19 @@ export const EmailsPage: React.FC = () => {
       return
     }
 
-    addEmailTemplate({
-      companyId: currentCompanyId,
+    const newTmpl: EmailTemplate = {
+      id: `tmpl-${Date.now()}`,
+      companyId: 'company-nova',
       name: newTemplateName,
       type: newTemplateType,
       subject: newTemplateSubject,
       body: newTemplateBody,
-    })
+    }
 
+    setTemplates([...templates, newTmpl])
+    setSelectedTemplateId(newTmpl.id)
+    setSubject(newTmpl.subject)
+    setBody(newTmpl.body)
     setIsTemplateModalOpen(false)
     setNewTemplateName('')
     setNewTemplateSubject('')
@@ -262,10 +403,21 @@ export const EmailsPage: React.FC = () => {
 
   const activeRecipientId = selectedRecipientIds[activePreviewIndex] || selectedRecipientIds[0]
   const preview = activeRecipientId ? getRenderedContent(activeRecipientId) : null
-  const companyLogs = emailLogs.filter((l) => l.companyId === currentCompanyId)
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="emails-page">
+      {/* Confirm Dispatch Dialog */}
+      <ConfirmDialog
+        open={showConfirmModal}
+        onOpenChange={setShowConfirmModal}
+        title="Send Bulk Communications"
+        description={`Are you sure you want to dispatch emails to ${selectedRecipientIds.length} candidate(s)? This will queue and deliver personalized messages.`}
+        confirmText={`Send ${selectedRecipientIds.length} Emails`}
+        variant="primary"
+        isLoading={isSending}
+        onConfirm={handleConfirmSend}
+      />
+
       {/* Create Template Modal */}
       <Modal
         open={isTemplateModalOpen}
@@ -331,9 +483,9 @@ export const EmailsPage: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-text">Email Communications & Automation</h1>
+          <h1 className="text-2xl font-bold text-text">Bulk Email to Shortlisted Candidates</h1>
           <p className="text-sm text-muted mt-0.5">
-            Send bulk interview invitations, shortlists, or updates with dynamic candidate variables.
+            Automated batch outreach with dynamic variable interpolation and delivery tracking.
           </p>
         </div>
 
@@ -347,35 +499,130 @@ export const EmailsPage: React.FC = () => {
         </Button>
       </div>
 
-      {/* Error State with Retry */}
-      {error && (
-        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-rose-800 text-sm font-semibold">
-            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span>{error}</span>
+      {/* Mode Banner: Simulation / Demo banner */}
+      <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 flex items-center justify-between text-xs text-indigo-900 shadow-soft" data-testid="email-demo-banner">
+        <div className="flex items-center gap-2">
+          <Info className="w-4 h-4 text-primary shrink-0" />
+          <span>
+            <strong>Demo:</strong> emails are simulated, nothing is sent. Real SMTP dispatch is gated behind backend activation.
+          </span>
+        </div>
+      </div>
+
+      {/* FALLBACK MODE BANNER (When endpoint returns 404/501 or fails) */}
+      {isFallbackMode && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-5 shadow-soft space-y-3" data-testid="email-fallback-banner">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-1">
+              <h3 className="text-sm font-bold text-amber-900">
+                Email sending is not enabled on this server.
+              </h3>
+              <p className="text-xs text-amber-800 leading-relaxed">
+                The backend service has not implemented or exposed <code>POST /email/send</code> ({fallbackReason}).
+                Use these manual fallback tools to reach out to your shortlisted applicants:
+              </p>
+            </div>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchEmailData}>
-            Retry
-          </Button>
+
+          <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-amber-200">
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<Copy className="w-3.5 h-3.5" />}
+              onClick={handleCopyAllEmails}
+              data-testid="fallback-copy-btn"
+            >
+              Copy all recipient emails
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<ExternalLink className="w-3.5 h-3.5" />}
+              onClick={handleOpenMailClient}
+              data-testid="fallback-mailto-btn"
+            >
+              Open in mail client (BCC)
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<Download className="w-3.5 h-3.5" />}
+              onClick={handleDownloadCsv}
+              data-testid="fallback-csv-btn"
+            >
+              Download recipients CSV
+            </Button>
+          </div>
         </div>
       )}
 
+      {/* Per-Recipient Result Table (when batch dispatch finishes) */}
+      {sendResults && (
+        <div className="bg-white rounded-xl border border-border shadow-soft p-5 space-y-3" data-testid="send-results-panel">
+          <div className="flex items-center justify-between pb-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <h3 className="text-sm font-bold text-text">Batch Delivery Results</h3>
+            </div>
+            <Badge variant="outline" size="sm">
+              {sendResults.length} Processed
+            </Badge>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-border bg-slate-50 text-muted font-semibold">
+                  <th className="p-2.5">Candidate ID</th>
+                  <th className="p-2.5">Email Address</th>
+                  <th className="p-2.5 text-center">Status</th>
+                  <th className="p-2.5">Detail / Reason</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {sendResults.map((res) => (
+                  <tr key={res.candidate_id} className="hover:bg-slate-50">
+                    <td className="p-2.5 font-bold text-text">{res.candidate_id}</td>
+                    <td className="p-2.5 text-muted">{res.email}</td>
+                    <td className="p-2.5 text-center">
+                      <Badge
+                        variant={res.status === 'sent' ? 'success' : 'danger'}
+                        size="sm"
+                      >
+                        {res.status === 'sent' ? 'Sent' : 'Failed'}
+                      </Badge>
+                    </td>
+                    <td className="p-2.5 text-[11px] text-muted">
+                      {res.error || (res.status === 'sent' ? 'Delivered to mail server' : 'Unknown delivery failure')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Composer & Preview Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT COLUMN: Composer & Templates (7 cols) */}
+        {/* LEFT COLUMN: Job Filter, Composer & Templates (7 cols) */}
         <div className="lg:col-span-7 space-y-4">
           <div className="bg-card rounded-xl border border-border p-5 shadow-soft space-y-4">
-            {/* Template Selector & Quick Tags */}
+            {/* Job Filter */}
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="flex-1 min-w-[200px]">
-                <label className="block text-xs font-semibold text-text mb-1">Load Email Template</label>
+                <label className="block text-xs font-semibold text-text mb-1">Filter by Job Requisition</label>
                 <select
-                  value={selectedTemplateId}
-                  onChange={(e) => handleSelectTemplate(e.target.value)}
+                  value={selectedJobId}
+                  onChange={(e) => setSelectedJobId(e.target.value)}
                   className="w-full h-9 px-3 rounded-lg border border-border bg-white text-xs font-medium text-text"
+                  data-testid="email-job-filter"
                 >
-                  {companyTemplates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} ({t.type})
+                  <option value="all">All Jobs (All Shortlisted)</option>
+                  {liveJobs.map((j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.title} ({j.department})
                     </option>
                   ))}
                 </select>
@@ -389,6 +636,22 @@ export const EmailsPage: React.FC = () => {
                   className="h-9 text-xs"
                 />
               </div>
+            </div>
+
+            {/* Template Selector */}
+            <div>
+              <label className="block text-xs font-semibold text-text mb-1">Load Email Template</label>
+              <select
+                value={selectedTemplateId}
+                onChange={(e) => handleSelectTemplate(e.target.value)}
+                className="w-full h-9 px-3 rounded-lg border border-border bg-white text-xs font-medium text-text"
+              >
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.type})
+                  </option>
+                ))}
+              </select>
             </div>
 
             {/* Variable Chips */}
@@ -439,18 +702,12 @@ export const EmailsPage: React.FC = () => {
 
               <div className="flex items-center gap-2">
                 <Button
-                  variant="outline"
-                  size="sm"
-                  leftIcon={<Calendar className="w-3.5 h-3.5" />}
-                  onClick={handleScheduleEmails}
-                >
-                  Schedule Later
-                </Button>
-                <Button
                   variant="primary"
                   size="sm"
                   leftIcon={<Send className="w-3.5 h-3.5" />}
-                  onClick={handleSendEmails}
+                  onClick={handleInitiateSend}
+                  disabled={selectedRecipientIds.length === 0 || isSending}
+                  data-testid="send-emails-btn"
                 >
                   Send to {selectedRecipientIds.length} Candidates
                 </Button>
@@ -472,7 +729,7 @@ export const EmailsPage: React.FC = () => {
                   <button
                     disabled={activePreviewIndex === 0}
                     onClick={() => setActivePreviewIndex(activePreviewIndex - 1)}
-                    className="px-2 py-0.5 rounded text-xs border border-border disabled:opacity-40"
+                    className="px-2 py-0.5 rounded text-xs border border-border disabled:opacity-40 cursor-pointer"
                   >
                     ←
                   </button>
@@ -482,7 +739,7 @@ export const EmailsPage: React.FC = () => {
                   <button
                     disabled={activePreviewIndex >= selectedRecipientIds.length - 1}
                     onClick={() => setActivePreviewIndex(activePreviewIndex + 1)}
-                    className="px-2 py-0.5 rounded text-xs border border-border disabled:opacity-40"
+                    className="px-2 py-0.5 rounded text-xs border border-border disabled:opacity-40 cursor-pointer"
                   >
                     →
                   </button>
@@ -502,7 +759,7 @@ export const EmailsPage: React.FC = () => {
                   <div className="font-bold text-indigo-900">{preview.renderedSubject}</div>
                 </div>
 
-                <div className="text-xs text-text whitespace-pre-line leading-relaxed font-sans max-h-64 overflow-y-auto">
+                <div className="text-xs text-text whitespace-pre-line leading-relaxed font-sans max-h-60 overflow-y-auto">
                   {preview.renderedBody}
                 </div>
               </div>
@@ -513,32 +770,45 @@ export const EmailsPage: React.FC = () => {
             {/* Recipients Checklist */}
             <div className="pt-2 border-t border-border">
               <div className="flex items-center justify-between text-xs font-semibold mb-2">
-                <span>Select Recipients ({selectedRecipientIds.length})</span>
+                <span>Select Shortlisted Recipients ({selectedRecipientIds.length})</span>
                 <button
                   onClick={() => {
-                    if (selectedRecipientIds.length === companyCandidates.length) {
+                    if (selectedRecipientIds.length === eligibleCandidates.length) {
                       setSelectedRecipientIds([])
                     } else {
-                      setSelectedRecipientIds(companyCandidates.map((c) => c.id))
+                      setSelectedRecipientIds(eligibleCandidates.map((c) => c.id))
                     }
                   }}
-                  className="text-primary hover:underline text-[11px]"
+                  className="text-primary hover:underline text-[11px] cursor-pointer"
                 >
-                  {selectedRecipientIds.length === companyCandidates.length ? 'Deselect all' : 'Select all'}
+                  {selectedRecipientIds.length === eligibleCandidates.length ? 'Deselect all' : 'Select all'}
                 </button>
               </div>
 
-              <div className="max-h-48 overflow-y-auto space-y-1.5 p-1">
-                {companyCandidates.length === 0 ? (
+              {/* Notice for candidates excluded due to missing email */}
+              {excludedWithoutEmailCount > 0 && (
+                <div className="mb-2 p-2 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span>
+                    {excludedWithoutEmailCount} shortlisted candidate{excludedWithoutEmailCount > 1 ? 's' : ''} excluded (missing email).
+                  </span>
+                </div>
+              )}
+
+              <div className="max-h-52 overflow-y-auto space-y-1.5 p-1 divide-y divide-border/50">
+                {eligibleCandidates.length === 0 ? (
                   <EmptyState
-                    title="No Candidates Available"
-                    description="Upload resumes to populate the candidate outreach list."
+                    title="No Shortlisted Candidates"
+                    description="Move applicants to the Shortlisted stage in the Pipeline to enable bulk outreach."
                   />
                 ) : (
-                  companyCandidates.slice(0, 25).map((c) => {
+                  eligibleCandidates.map((c) => {
                     const isChecked = selectedRecipientIds.includes(c.id)
                     return (
-                      <label key={c.id} className="flex items-center justify-between text-xs p-1.5 rounded hover:bg-gray-50 cursor-pointer">
+                      <label
+                        key={c.id}
+                        className="flex items-center justify-between text-xs p-1.5 rounded hover:bg-gray-50 cursor-pointer"
+                      >
                         <div className="flex items-center gap-2">
                           <input
                             type="checkbox"
@@ -549,7 +819,10 @@ export const EmailsPage: React.FC = () => {
                             }}
                             className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
                           />
-                          <span className="font-medium">{c.name}</span>
+                          <div>
+                            <span className="font-medium text-text block">{c.name}</span>
+                            <span className="text-[10px] text-muted">{c.email}</span>
+                          </div>
                         </div>
                         <span className="text-[10px] text-muted">{c.college}</span>
                       </label>
@@ -562,14 +835,14 @@ export const EmailsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Email Send History Log */}
+      {/* Audit Log Table */}
       <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
         <div className="p-4 border-b border-border flex items-center justify-between bg-gray-50/50">
           <div>
-            <h3 className="text-sm font-bold text-text">Dispatched & Scheduled Communications</h3>
-            <p className="text-xs text-muted">Auditable log of outgoing emails sent to applicants.</p>
+            <h3 className="text-sm font-bold text-text">Dispatched &amp; Scheduled Communications</h3>
+            <p className="text-xs text-muted">Auditable session log of outgoing candidate communications.</p>
           </div>
-          <Badge variant="outline" size="sm">{companyLogs.length} Records</Badge>
+          <Badge variant="outline" size="sm">{emailLogs.length} Records</Badge>
         </div>
 
         <div className="overflow-x-auto">
@@ -583,14 +856,14 @@ export const EmailsPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {companyLogs.length === 0 ? (
+              {emailLogs.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="p-8 text-center text-muted">
                     No emails dispatched in this session yet.
                   </td>
                 </tr>
               ) : (
-                companyLogs.map((log) => (
+                emailLogs.map((log) => (
                   <tr key={log.id} className="hover:bg-gray-50/50">
                     <td className="p-3 font-semibold text-text">
                       {log.recipientName}
@@ -598,7 +871,7 @@ export const EmailsPage: React.FC = () => {
                     </td>
                     <td className="p-3 max-w-xs truncate">{log.subject}</td>
                     <td className="p-3">
-                      <Badge variant={log.status === 'Sent' ? 'success' : 'warning'} size="sm">
+                      <Badge variant={log.status === 'Sent' ? 'success' : 'danger'} size="sm">
                         {log.status}
                       </Badge>
                     </td>

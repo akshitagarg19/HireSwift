@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAppStore } from '@/store'
 import {
@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   Menu,
   X,
+  Sparkles,
 } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
@@ -30,7 +31,7 @@ import { CommandPalette } from '@/components/CommandPalette'
 import { cn } from '@/lib/utils'
 import { Role } from '@/types'
 import { isFeatureEnabled } from '@/config/features'
-import { USE_MOCK } from '@/api/client'
+import { USE_MOCK, getIsSyntheticData } from '@/api/client'
 
 export const AppShell: React.FC = () => {
   const navigate = useNavigate()
@@ -55,6 +56,15 @@ export const AppShell: React.FC = () => {
   const [showNotifications, setShowNotifications] = useState(false)
   const [showCompanyMenu, setShowCompanyMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [isSynthetic, setIsSynthetic] = useState(getIsSyntheticData())
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      setIsSynthetic(Boolean(e.detail ?? true))
+    }
+    window.addEventListener('hireswift-synthetic', handler)
+    return () => window.removeEventListener('hireswift-synthetic', handler)
+  }, [])
 
   const currentCompany = companies.find((c) => c.id === currentCompanyId) || companies[0]
 
@@ -291,6 +301,17 @@ export const AppShell: React.FC = () => {
 
           {/* Right Actions */}
           <div className="flex items-center gap-3">
+            {/* Synthetic Data Scale Indicator */}
+            {isSynthetic && (
+              <span
+                data-testid="synthetic-data-badge"
+                className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse" />
+                Synthetic data (Scale: 1,000)
+              </span>
+            )}
+
             {/* Blind Mode Top-bar Toggle */}
             <button
               type="button"

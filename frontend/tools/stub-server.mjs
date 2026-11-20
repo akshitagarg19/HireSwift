@@ -42,6 +42,7 @@ const rootDir = path.resolve(__dirname, '../..')
 const testDataDir = path.join(rootDir, 'test-data')
 
 const PORT = process.env.PORT || 8000
+const STUB_SCALE = parseInt(process.env.STUB_SCALE || '0', 10)
 
 let candidatesDb = []
 let jobsDb = []
@@ -115,6 +116,61 @@ function loadTestData() {
       created_at: new Date(Date.now() - idx * 3600000).toISOString(),
     }
   })
+
+  // Optional Scale: Synthetic Candidate Generation (STUB_SCALE=1000)
+  if (STUB_SCALE > candidatesDb.length) {
+    const baseCount = candidatesDb.length
+    for (let i = baseCount; i < STUB_SCALE; i++) {
+      const template = candidatesDb[i % baseCount]
+      const synId = `SYN-${String(i + 1).padStart(4, '0')}`
+      const cgpaOffset = ((i * 17) % 25) / 10
+      const synCgpa = Number(Math.min(9.9, Math.max(6.0, (template.cgpa || 7.5) + (cgpaOffset - 1.2))).toFixed(2))
+      const synExpMonths = (template.experience_months || 24) + ((i * 7) % 36)
+      const synExpYears = Number((synExpMonths / 12).toFixed(2))
+
+      candidatesDb.push({
+        id: synId,
+        company_id: 'company-nova',
+        name: `${template.name} (Syn #${i + 1})`,
+        email: `syn_${synId.toLowerCase()}@example.com`,
+        phone: `+91 ${9800000000 + i}`,
+        location: template.location,
+        college: template.college,
+        degree: template.degree,
+        branch: template.branch,
+        grad_year: template.grad_year,
+        cgpa: synCgpa,
+        tenth_percent: template.tenth_percent,
+        twelfth_percent: template.twelfth_percent,
+        experience_years: synExpYears,
+        experience_months: synExpMonths,
+        skills: [...template.skills],
+        experience: [
+          {
+            title: 'Software Engineer',
+            company: 'Tech Synthetics Ltd',
+            duration: `${synExpMonths} months`,
+            description: `Developed scalable backend systems using ${template.skills.slice(0, 3).join(', ')}.`,
+          },
+        ],
+        projects: [
+          {
+            title: 'High-Scale Cloud Platform',
+            description: 'Designed distributed infrastructure.',
+            technologies: template.skills.slice(0, 3),
+          },
+        ],
+        certifications: [],
+        resume_text: `Synthetic candidate profile ${synId}. Location: ${template.location}. Skills: ${template.skills.join(', ')}.`,
+        resume_file_name: `synthetic_resume_${synId}.pdf`,
+        parse_confidence: 90,
+        source: 'synthetic_generator',
+        created_at: new Date(Date.now() - (i % 60) * 86400000).toISOString(),
+        is_duplicate: i % 15 === 0,
+        duplicate_group_id: i % 15 === 0 ? `dup-syn-${Math.floor(i / 15)}` : null,
+      })
+    }
+  }
 
   // 2. Load JDs from jd_answer_key.csv and jds/ folder
   const jdKeys = loadJdAnswerKey()
@@ -193,12 +249,17 @@ function loadTestData() {
 loadTestData()
 
 function sendJson(res, statusCode, data) {
-  res.writeHead(statusCode, {
+  const headers = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  })
+    'Access-Control-Expose-Headers': 'X-Stub-Synthetic',
+  }
+  if (STUB_SCALE > 0) {
+    headers['X-Stub-Synthetic'] = 'true'
+  }
+  res.writeHead(statusCode, headers)
   res.end(JSON.stringify(data))
 }
 
@@ -799,6 +860,42 @@ const server = http.createServer(async (req, res) => {
       candidates: compared,
       job: jobsDb[0],
     })
+  }
+
+  // 13. Bulk Email Dispatch (Proposed API endpoint)
+  if (req.method === 'POST' && pathname === '/email/send') {
+    if (query.get('simulate_fallback') === 'true') {
+      return sendJson(res, 501, { detail: 'Email sending is not enabled on this server.' })
+    }
+    const body = await parseJsonBody(req)
+    const recipients = body.recipients || []
+
+    const results = recipients.map((r, idx) => {
+      const email = r.to || ''
+      // Scripted address or explicit test fail
+      const isFailed =
+        email.toLowerCase().includes('fail') ||
+        email.toLowerCase().includes('invalid') ||
+        r.candidate_id === 'C042' ||
+        (idx === 1 && recipients.length >= 2 && Boolean(body.include_test_failure))
+
+      if (isFailed) {
+        return {
+          candidate_id: r.candidate_id,
+          email,
+          status: 'failed',
+          error: 'SMTP 550 5.1.1 Recipient address rejected: User unknown',
+        }
+      }
+
+      return {
+        candidate_id: r.candidate_id,
+        email,
+        status: 'sent',
+      }
+    })
+
+    return sendJson(res, 200, { sent: results })
   }
 
   // Fallback 404

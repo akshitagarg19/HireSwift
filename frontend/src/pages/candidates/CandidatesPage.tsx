@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAppStore } from '@/store'
 import { isReadOnlyViewer } from '@/lib/permissions'
+import { getSkillLearnHint } from '@/lib/skillHints'
 import { api, CandidateFilterParams, USE_MOCK } from '@/api'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -145,10 +146,24 @@ export const CandidatesPage: React.FC = () => {
       else if (sortParam.startsWith('score')) setSortBy('score')
       setSortOrder(sortParam.endsWith('asc') ? 'asc' : 'desc')
     }
-
-    const pageParam = parseInt(searchParams.get('page') || '1', 10) || 1
-    setPage(pageParam)
   }, [searchParams])
+
+  // URL-driven pagination
+  const page = parseInt(searchParams.get('page') || '1', 10) || 1
+  const pageSize = parseInt(searchParams.get('page_size') || '25', 10) || 25
+
+  const setPage = (newPage: number) => {
+    const params = new URLSearchParams(searchParams)
+    params.set('page', String(newPage))
+    setSearchParams(params)
+  }
+
+  const setPageSize = (newSize: number) => {
+    const params = new URLSearchParams(searchParams)
+    params.set('page_size', String(newSize))
+    params.set('page', '1')
+    setSearchParams(params)
+  }
 
   // UI state
   const [showFilterSidebar, setShowFilterSidebar] = useState(true)
@@ -166,8 +181,6 @@ export const CandidatesPage: React.FC = () => {
   const initialSortOrder = sortParam?.endsWith('asc') ? 'asc' : 'desc'
   const [sortBy, setSortBy] = useState<'score' | 'cgpa' | 'exp' | 'name'>(initialSortBy)
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(initialSortOrder)
-  const [page, setPage] = useState(parseInt(searchParams.get('page') || '1', 10) || 1)
-  const pageSize = 12
 
   // Server-driven state for live mode (!USE_MOCK)
   const [serverCandidates, setServerCandidates] = useState<Candidate[]>([])
@@ -175,6 +188,7 @@ export const CandidatesPage: React.FC = () => {
   const [isServerLoading, setIsServerLoading] = useState<boolean>(false)
   const [serverError, setServerError] = useState<string | null>(null)
   const [retryTrigger, setRetryTrigger] = useState<number>(0)
+  const lastCandidatesReqId = useRef(0)
 
   // Debounce search query input (300ms)
   useEffect(() => {
@@ -184,14 +198,15 @@ export const CandidatesPage: React.FC = () => {
     return () => clearTimeout(timer)
   }, [textSearch])
 
-  // Call api.getCandidates(params) on every filter, sort, page, or search change (debounced 300ms)
+  // Call api.getCandidates(params) on every filter, sort, page, or search change (search is debounced 300ms)
   useEffect(() => {
     if (USE_MOCK) return
 
+    const reqId = ++lastCandidatesReqId.current
     setIsServerLoading(true)
     setServerError(null)
 
-    const timer = setTimeout(async () => {
+    const fetchCandidates = async () => {
       try {
         const queryParams: CandidateFilterParams = {
           page,
@@ -221,16 +236,22 @@ export const CandidatesPage: React.FC = () => {
         else queryParams.sort = 'cgpa_desc'
 
         const res = await api.getCandidates(queryParams)
-        setServerCandidates(res.items)
-        setServerTotal(res.total)
+        if (reqId === lastCandidatesReqId.current) {
+          setServerCandidates(res.items)
+          setServerTotal(res.total)
+        }
       } catch (err: any) {
-        setServerError(`Failed to fetch candidates: ${err?.message || 'Server error'}`)
+        if (reqId === lastCandidatesReqId.current) {
+          setServerError(`Failed to fetch candidates: ${err?.message || 'Server error'}`)
+        }
       } finally {
-        setIsServerLoading(false)
+        if (reqId === lastCandidatesReqId.current) {
+          setIsServerLoading(false)
+        }
       }
-    }, 300)
+    }
 
-    return () => clearTimeout(timer)
+    fetchCandidates()
   }, [
     debouncedQuery,
     minCgpa,
@@ -389,6 +410,7 @@ export const CandidatesPage: React.FC = () => {
     else if (sortBy === 'score') params.set('sort', sortOrder === 'asc' ? 'score_asc' : 'score_desc')
 
     if (page > 1) params.set('page', String(page))
+    if (pageSize) params.set('page_size', String(pageSize))
 
     if (params.toString() !== searchParams.toString()) {
       setSearchParams(params, { replace: true })
@@ -408,6 +430,7 @@ export const CandidatesPage: React.FC = () => {
     sortBy,
     sortOrder,
     page,
+    pageSize,
   ])
 
   // Skill Chip mode toggler
@@ -1409,16 +1432,32 @@ export const CandidatesPage: React.FC = () => {
             </div>
 
             {/* Pagination footer */}
-            <div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted bg-gray-50/50">
-              <span>
-                Showing {totalCandidateCount === 0 ? 0 : (page - 1) * pageSize + 1} to{' '}
-                {Math.min(page * pageSize, totalCandidateCount)} of {totalCandidateCount} entries
-              </span>
+            <div className="p-3 border-t border-border flex flex-wrap items-center justify-between gap-3 text-xs text-muted bg-gray-50/50">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span>Rows:</span>
+                  <select
+                    aria-label="Rows per page"
+                    value={pageSize}
+                    onChange={(e) => setPageSize(parseInt(e.target.value, 10))}
+                    className="bg-white border border-border rounded px-2 py-1 text-xs font-semibold text-text focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer shadow-xs"
+                  >
+                    <option value={12}>12</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                </div>
+                <span>
+                  Showing {totalCandidateCount === 0 ? 0 : (page - 1) * pageSize + 1} to{' '}
+                  {Math.min(page * pageSize, totalCandidateCount)} of {totalCandidateCount} entries
+                </span>
+              </div>
               <div className="flex items-center gap-1">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  onClick={() => setPage(Math.max(1, page - 1))}
                   disabled={page === 1}
                 >
                   Previous
@@ -1429,7 +1468,7 @@ export const CandidatesPage: React.FC = () => {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setPage((p) => Math.min(effectiveTotalPages, p + 1))}
+                  onClick={() => setPage(Math.min(effectiveTotalPages, page + 1))}
                   disabled={page >= effectiveTotalPages}
                 >
                   Next
@@ -1655,7 +1694,7 @@ export const CandidatesPage: React.FC = () => {
 
                 {/* Applications & Match Score */}
                 {candidateAppMap.get(drawerCandidate.id) && (
-                  <div className="p-4 rounded-xl border border-border bg-white space-y-3">
+                  <div className="p-4 rounded-xl border border-border bg-white space-y-3" data-testid="drawer-match-panel">
                     <div className="flex items-center justify-between">
                       <div>
                         <span className="text-[10px] uppercase font-bold text-muted">Active Application</span>
@@ -1665,14 +1704,77 @@ export const CandidatesPage: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-muted">Match Score</span>
-                        <ScoreRing score={candidateAppMap.get(drawerCandidate.id)?.matchScore || 0} size="md" />
+                        <ScoreRing score={candidateAppMap.get(drawerCandidate.id)?.matchScore ?? null} size="md" />
                       </div>
                     </div>
+
+                    {/* Breakdown Bars */}
+                    {candidateAppMap.get(drawerCandidate.id)?.breakdown && (
+                      <div className="space-y-1.5 pt-2 border-t border-border text-xs">
+                        <span className="text-[11px] font-semibold text-text block">Score Breakdown</span>
+                        <div className="grid grid-cols-2 gap-2 text-[11px]">
+                          <div>
+                            <span className="text-muted">Skills: </span>
+                            <span className="font-bold text-text">
+                              {candidateAppMap.get(drawerCandidate.id)?.breakdown?.skills != null
+                                ? `${candidateAppMap.get(drawerCandidate.id)?.breakdown?.skills}%`
+                                : '-'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted">Exp: </span>
+                            <span className="font-bold text-text">
+                              {candidateAppMap.get(drawerCandidate.id)?.breakdown?.experience != null
+                                ? `${candidateAppMap.get(drawerCandidate.id)?.breakdown?.experience}%`
+                                : '-'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted">Edu: </span>
+                            <span className="font-bold text-text">
+                              {candidateAppMap.get(drawerCandidate.id)?.breakdown?.education != null
+                                ? `${candidateAppMap.get(drawerCandidate.id)?.breakdown?.education}%`
+                                : '-'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted">Semantic: </span>
+                            <span className="font-bold text-text">
+                              {candidateAppMap.get(drawerCandidate.id)?.breakdown?.semantic != null
+                                ? `${candidateAppMap.get(drawerCandidate.id)?.breakdown?.semantic}%`
+                                : '-'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {candidateAppMap.get(drawerCandidate.id)?.explanation && (
                       <p className="text-xs text-muted bg-gray-50 p-2.5 rounded border border-gray-100">
                         {candidateAppMap.get(drawerCandidate.id)?.explanation}
                       </p>
                     )}
+
+                    {/* Skill Gap List with Learn hints */}
+                    {candidateAppMap.get(drawerCandidate.id)?.missingSkills &&
+                      (candidateAppMap.get(drawerCandidate.id)?.missingSkills?.length || 0) > 0 && (
+                        <div className="pt-2 border-t border-border space-y-1.5">
+                          <span className="text-[11px] font-bold text-text uppercase tracking-wider block">
+                            Skill Gap &amp; Next Steps
+                          </span>
+                          {candidateAppMap.get(drawerCandidate.id)?.missingSkills?.map((ms) => (
+                            <div key={ms} className="p-2 bg-slate-50 rounded border border-border text-xs">
+                              <div className="flex items-center gap-1.5 font-bold text-text">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                                <span>Missing for role: {ms}</span>
+                              </div>
+                              <div className="text-[11px] text-muted mt-0.5">
+                                💡 <em>Learn hint:</em> {getSkillLearnHint(ms)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                   </div>
                 )}
 

@@ -68,8 +68,8 @@ export const HomePage: React.FC = () => {
   const [openFaq, setOpenFaq] = useState<number | null>(0)
 
   const appRoute = isFeatureEnabled('enableDashboard') ? '/app/dashboard' : '/app/upload'
-  const authRoute = isFeatureEnabled('enableAuth') ? '/signup' : '/app/upload'
-  const loginRoute = isFeatureEnabled('enableAuth') ? '/login' : '/app/upload'
+  const authRoute = isFeatureEnabled('enableAuth') ? '/signup' : appRoute
+  const loginRoute = isFeatureEnabled('enableAuth') ? '/login' : appRoute
 
   const handleLiveDemoClick = () => {
     login('admin@novalabs.com')

@@ -358,3 +358,51 @@ Advance or move an applicant along the Kanban pipeline.
 ### `GET /compare?ids=cand-001,cand-002&job_id=job-101`
 Compare 2 to 3 candidates side-by-side with dimensional highlights.
 *Note:* A maximum of 3 candidate IDs is permitted. If more than 3 are passed, returns `400 Bad Request`.
+
+---
+
+## 7. PROPOSED (needs backend confirmation)
+
+### `POST /email/send`
+Dispatches batch communication emails to shortlisted candidates. Template variables (`{{candidate_name}}`, `{{job_title}}`, `{{company_name}}`) are pre-rendered per recipient on the frontend before sending.
+
+**Request Body:**
+```json
+{
+  "job_id": "job-101",
+  "recipients": [
+    {
+      "candidate_id": "C001",
+      "to": "aarav.sharma@example.com",
+      "subject": "Interview Invitation: Senior Backend Engineer at NovaLabs",
+      "body": "Dear Aarav Sharma,\n\nWe would like to invite you for a technical interview..."
+    }
+  ]
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "sent": [
+    {
+      "candidate_id": "C001",
+      "email": "aarav.sharma@example.com",
+      "status": "sent"
+    },
+    {
+      "candidate_id": "C042",
+      "email": "scripted_fail@test.com",
+      "status": "failed",
+      "error": "SMTP server rejected recipient address"
+    }
+  ]
+}
+```
+
+**Fallback Contract:**
+If the server does not support email dispatch (e.g. returns `404 Not Found` or `501 Not Implemented`), the frontend switches to manual fallback mode offering:
+1. Copy all recipient emails to clipboard.
+2. Open native email client via `mailto:` with BCC chunking (max 40 recipients per URL).
+3. Download recipient CSV export (`name,email,subject,body`).
+

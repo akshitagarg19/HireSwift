@@ -1,7 +1,20 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
-import { Search, Briefcase, User, ArrowRight } from 'lucide-react'
+import {
+  Search,
+  Briefcase,
+  User,
+  ArrowRight,
+  UploadCloud,
+  Users,
+  Kanban,
+  Scale,
+  BarChart3,
+  Mail,
+  Copy,
+  Settings,
+} from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 
 interface CommandPaletteProps {
@@ -28,6 +41,26 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onOpenChan
 
   const companyJobs = jobs.filter((j) => j.companyId === currentCompanyId)
   const companyCandidates = candidates.filter((c) => c.companyId === currentCompanyId)
+
+  const quickPages = [
+    { label: 'Candidate Directory', path: '/app/candidates', icon: Users, keywords: 'candidates directory talent table' },
+    { label: '5-Stage Pipeline Kanban', path: '/app/pipeline', icon: Kanban, keywords: 'pipeline kanban stages moves' },
+    { label: 'Upload & Parse Resumes', path: '/app/upload', icon: UploadCloud, keywords: 'upload resumes parse bulk' },
+    { label: 'Active Job Openings', path: '/app/jobs', icon: Briefcase, keywords: 'jobs openings positions jd' },
+    { label: 'Side-by-Side Candidate Compare', path: '/app/compare', icon: Scale, keywords: 'compare comparison side by side' },
+    { label: 'Skill Gap & Pipeline Insights', path: '/app/insights', icon: BarChart3, keywords: 'insights analytics charts metrics' },
+    { label: 'Bulk Email Outreach', path: '/app/emails', icon: Mail, keywords: 'emails mail bulk template shortlisted' },
+    { label: 'Duplicate Detection & Merging', path: '/app/duplicates', icon: Copy, keywords: 'duplicates merge fuzzy' },
+    { label: 'Hiring Settings & Scoring Weights', path: '/app/settings', icon: Settings, keywords: 'settings weights scoring blind' },
+  ]
+
+  const matchedPages = query.trim()
+    ? quickPages.filter(
+        (p) =>
+          p.label.toLowerCase().includes(query.toLowerCase()) ||
+          p.keywords.includes(query.toLowerCase())
+      )
+    : quickPages.slice(0, 4)
 
   const filteredJobs = query.trim()
     ? companyJobs.filter(
@@ -67,6 +100,33 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onOpenChan
       </div>
 
       <div className="max-h-96 overflow-y-auto p-3 space-y-4">
+        {/* Quick Navigation Section */}
+        {matchedPages.length > 0 && (
+          <div>
+            <div className="px-2 py-1 text-xs font-semibold text-muted uppercase tracking-wider">
+              Navigation ({matchedPages.length})
+            </div>
+            <div className="mt-1 space-y-1">
+              {matchedPages.map((page) => {
+                const PageIcon = page.icon
+                return (
+                  <button
+                    key={page.path}
+                    onClick={() => handleSelect(page.path)}
+                    className="w-full flex items-center justify-between px-3 py-2 text-left rounded-lg text-sm text-text hover:bg-gray-100 transition-colors group"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <PageIcon className="w-4 h-4 text-primary shrink-0" />
+                      <span className="font-medium">{page.label}</span>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Jobs section */}
         <div>
           <div className="px-2 py-1 text-xs font-semibold text-muted uppercase tracking-wider">

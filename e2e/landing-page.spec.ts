@@ -13,15 +13,14 @@ test.describe('HireSwift Landing Page & Public Navigation', () => {
     await expect(page.locator('#pricing')).toBeVisible()
     await expect(page.getByText('Simple, Transparent Pricing')).toBeVisible()
 
-    // 3. Click "Try live demo" and verify it logs in and navigates to /app/dashboard
+    // 3. Click "Try live demo" and verify it logs in and navigates to app workspace
     const liveDemoBtn = page.getByRole('button', { name: /Try live demo/i }).first()
     await liveDemoBtn.click()
-    await expect(page).toHaveURL(/.*\/app\/dashboard/)
-    await expect(page.getByText('Hiring Dashboard')).toBeVisible()
+    await expect(page).toHaveURL(/.*\/app\/(upload|dashboard|candidates)/)
 
-    // 4. Return to home page while logged in, verify "Go to Dashboard" button is shown
+    // 4. Return to home page while logged in, verify workspace CTA button is shown
     await page.goto('/')
-    await expect(page.getByRole('button', { name: /Go to Dashboard/i }).first()).toBeVisible()
+    await expect(page.getByRole('button', { name: /Go to Dashboard|Launch App/i }).first()).toBeVisible()
   })
 
   test('Polished 404 page for unknown routes', async ({ page }) => {

@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useAppStore } from '@/store'
+import { api, USE_MOCK } from '@/api'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
@@ -34,11 +35,121 @@ export const DuplicatesPage: React.FC = () => {
   const [primaryCandId, setPrimaryCandId] = useState<string>('')
   const [isScanning, setIsScanning] = useState(false)
 
-  const companyGroups = duplicateGroups.filter((g) => g.companyId === currentCompanyId)
-  const pendingGroups = companyGroups.filter((g) => g.status === 'Pending')
-  const resolvedGroups = companyGroups.filter((g) => g.status !== 'Pending')
+  // In live mode, fetch candidate directory from API
+  const [apiCandidates, setApiCandidates] = useState<Candidate[]>([])
+  useEffect(() => {
+    if (!USE_MOCK) {
+      api.getCandidates({ page_size: 100 })
+        .then((res) => setApiCandidates(res.items))
+        .catch(() => {})
+    }
+  }, [])
 
-  const candidateMap = new Map(candidates.map((c) => [c.id, c]))
+  const allCandidates = USE_MOCK ? candidates : (apiCandidates.length > 0 ? apiCandidates : candidates)
+  const companyCandidates = allCandidates.filter((c) => c.companyId === currentCompanyId || !USE_MOCK)
+  const candidateMap = new Map(companyCandidates.map((c) => [c.id, c]))
+
+  // Group by API is_duplicate, group_id, or client-side shared email/phone
+  const allGroups = useMemo(() => {
+    const groups: DuplicateGroup[] = [...duplicateGroups.filter((g) => g.companyId === currentCompanyId)]
+    const existingGroupIds = new Set(groups.map((g) => g.id))
+    const assignedCandIds = new Set<string>()
+    groups.forEach((g) => g.candidateIds.forEach((id) => assignedCandIds.add(id)))
+
+    // Group candidates with duplicateGroupId
+    const byGroupId = new Map<string, Candidate[]>()
+    companyCandidates.forEach((c) => {
+      if (c.duplicateGroupId) {
+        if (!byGroupId.has(c.duplicateGroupId)) byGroupId.set(c.duplicateGroupId, [])
+        byGroupId.get(c.duplicateGroupId)!.push(c)
+      }
+    })
+
+    byGroupId.forEach((cands, grpId) => {
+      if (cands.length >= 2 && !existingGroupIds.has(grpId)) {
+        groups.push({
+          id: grpId,
+          companyId: currentCompanyId,
+          candidateIds: cands.map((c) => c.id),
+          similarity: 92,
+          matchingSignals: ['API Identified Duplicate Group', 'Shared Profile Metadata'],
+          status: 'Pending',
+        })
+        existingGroupIds.add(grpId)
+        cands.forEach((c) => assignedCandIds.add(c.id))
+      }
+    })
+
+    // If no group id, group client-side by shared email or phone
+    const byEmail = new Map<string, Candidate[]>()
+    const byPhone = new Map<string, Candidate[]>()
+
+    companyCandidates.forEach((c) => {
+      if (c.email && c.email.trim()) {
+        const normEmail = c.email.toLowerCase().trim()
+        if (!byEmail.has(normEmail)) byEmail.set(normEmail, [])
+        byEmail.get(normEmail)!.push(c)
+      }
+      if (c.phone && c.phone.trim()) {
+        const normPhone = c.phone.replace(/\D/g, '')
+        if (normPhone.length >= 7) {
+          if (!byPhone.has(normPhone)) byPhone.set(normPhone, [])
+          byPhone.get(normPhone)!.push(c)
+        }
+      }
+    })
+
+    let dynamicIdx = 1
+    byEmail.forEach((cands, email) => {
+      if (cands.length >= 2) {
+        const alreadyGrouped = groups.some((g) =>
+          cands.every((c) => g.candidateIds.includes(c.id))
+        )
+        if (!alreadyGrouped) {
+          const groupId = `dup-email-${dynamicIdx++}`
+          if (!existingGroupIds.has(groupId)) {
+            groups.push({
+              id: groupId,
+              companyId: currentCompanyId,
+              candidateIds: cands.map((c) => c.id),
+              similarity: 95,
+              matchingSignals: [`Shared Email Address (${email})`, 'Potential Duplicate Profile'],
+              status: 'Pending',
+            })
+            existingGroupIds.add(groupId)
+            cands.forEach((c) => assignedCandIds.add(c.id))
+          }
+        }
+      }
+    })
+
+    byPhone.forEach((cands, phone) => {
+      if (cands.length >= 2) {
+        const alreadyGrouped = groups.some((g) =>
+          cands.every((c) => g.candidateIds.includes(c.id))
+        )
+        if (!alreadyGrouped) {
+          const groupId = `dup-phone-${dynamicIdx++}`
+          if (!existingGroupIds.has(groupId)) {
+            groups.push({
+              id: groupId,
+              companyId: currentCompanyId,
+              candidateIds: cands.map((c) => c.id),
+              similarity: 90,
+              matchingSignals: [`Shared Phone Number (${phone})`, 'Contact Signal Match'],
+              status: 'Pending',
+            })
+            existingGroupIds.add(groupId)
+          }
+        }
+      }
+    })
+
+    return groups
+  }, [duplicateGroups, companyCandidates, currentCompanyId])
+
+  const pendingGroups = allGroups.filter((g) => g.status === 'Pending')
+  const resolvedGroups = allGroups.filter((g) => g.status !== 'Pending')
 
   const handleOpenMerge = (group: DuplicateGroup) => {
     setSelectedGroup(group)

@@ -8,7 +8,7 @@ describe('Candidate Filtering on Seed Data (Spot Checks)', () => {
   const novaSynonyms = SEED_COMPANIES[0].settings.skillSynonyms
 
   it('Filter Combination 1: High CGPA filter (CGPA >= 8.5)', () => {
-    const results = novaCandidates.filter((c) => c.cgpa >= 8.5)
+    const results = novaCandidates.filter((c) => (c.cgpa ?? 0) >= 8.5)
     expect(results.length).toBeGreaterThan(0)
     results.forEach((c) => {
       expect(c.cgpa).toBeGreaterThanOrEqual(8.5)
@@ -47,7 +47,7 @@ describe('Candidate Filtering on Seed Data (Spot Checks)', () => {
   it('Filter Combination 5: Combinable Multi-filter (CGPA >= 8.0 + Python + Bengaluru)', () => {
     const results = novaCandidates.filter(
       (c) =>
-        c.cgpa >= 8.0 &&
+        (c.cgpa ?? 0) >= 8.0 &&
         c.location === 'Bengaluru' &&
         hasSkillWithSynonyms(c.skills, 'Python', novaSynonyms)
     )
@@ -61,7 +61,7 @@ describe('Candidate Filtering on Seed Data (Spot Checks)', () => {
 
   it('Filter Combination 6: Experience Range filter (Experience between 2 and 5 years)', () => {
     const results = novaCandidates.filter(
-      (c) => c.experienceYears >= 2 && c.experienceYears <= 5
+      (c) => (c.experienceYears ?? 0) >= 2 && (c.experienceYears ?? 0) <= 5
     )
     expect(results.length).toBeGreaterThan(0)
     results.forEach((c) => {

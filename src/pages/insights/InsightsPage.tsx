@@ -92,7 +92,7 @@ export const InsightsPage: React.FC = () => {
   const totalPool = companyCandidates.length
   const k8sCount = companyCandidates.filter((c) => c.skills.includes('Kubernetes') || c.skills.includes('K8s')).length
   const tier1Count = companyCandidates.filter((c) => c.tier === 'Tier-1').length
-  const highCgpaCount = companyCandidates.filter((c) => c.cgpa >= 8.5).length
+  const highCgpaCount = companyCandidates.filter((c) => (c.cgpa ?? 0) >= 8.5).length
 
   return (
     <div className="space-y-6">

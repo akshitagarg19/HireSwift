@@ -57,26 +57,28 @@ In production, HireSwift is served directly by FastAPI from a single Docker cont
 
 Example FastAPI implementation:
 ```python
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
 
 app = FastAPI(title="HireSwift API")
 
-# Mount API endpoints first
-# app.include_router(api_router, prefix="/api")
+# 1. Register API router FIRST
+app.include_router(api_router, prefix="/api")
 
-# Mount built static assets
-app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+# 2. Mount built static assets from frontend
+app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
 
-# SPA catch-all fallback
+# 3. SPA catch-all registered AFTER /api router, strictly excluding paths starting with /api
 @app.get("/{full_path:path}")
 async def serve_spa(full_path: str):
-    file_path = os.path.join("dist", full_path)
+    if full_path.startswith("api"):
+        raise HTTPException(status_code=404, detail="API route not found")
+    file_path = os.path.join("frontend/dist", full_path)
     if os.path.exists(file_path) and os.path.isfile(file_path):
         return FileResponse(file_path)
-    return FileResponse("dist/index.html")
+    return FileResponse("frontend/dist/index.html")
 ```
 
 ---

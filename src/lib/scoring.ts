@@ -106,16 +106,16 @@ export function matchScore(
   let hardViolation: string | undefined;
 
   // 1. Hard requirements checks
-  if (req.minCgpa && candidate.cgpa > 0 && candidate.cgpa < req.minCgpa) {
+  if (req.minCgpa && candidate.cgpa != null && candidate.cgpa > 0 && candidate.cgpa < req.minCgpa) {
     hardViolation = `CGPA ${candidate.cgpa} is below required minimum ${req.minCgpa}`;
   }
-  if (req.minTenth && candidate.tenthPercent > 0 && candidate.tenthPercent < req.minTenth) {
+  if (req.minTenth && candidate.tenthPercent != null && candidate.tenthPercent > 0 && candidate.tenthPercent < req.minTenth) {
     hardViolation = hardViolation || `10th score (${candidate.tenthPercent}%) below min (${req.minTenth}%)`;
   }
-  if (req.minTwelfth && candidate.twelfthPercent > 0 && candidate.twelfthPercent < req.minTwelfth) {
+  if (req.minTwelfth && candidate.twelfthPercent != null && candidate.twelfthPercent > 0 && candidate.twelfthPercent < req.minTwelfth) {
     hardViolation = hardViolation || `12th score (${candidate.twelfthPercent}%) below min (${req.minTwelfth}%)`;
   }
-  if (req.gradYears && req.gradYears.length > 0 && candidate.gradYear > 0) {
+  if (req.gradYears && req.gradYears.length > 0 && candidate.gradYear != null && candidate.gradYear > 0) {
     if (!req.gradYears.includes(candidate.gradYear)) {
       hardViolation = hardViolation || `Graduation year ${candidate.gradYear} not in target batch (${req.gradYears.join(', ')})`;
     }
@@ -184,20 +184,20 @@ export function matchScore(
   let eduTotal = 0;
 
   // CGPA factor
-  if (candidate.cgpa > 0) {
+  if (candidate.cgpa != null && candidate.cgpa > 0) {
     const cgpaPercent = normalizeCgpaToPercent(candidate.cgpa);
     eduTotal += cgpaPercent;
     eduFactors += 1;
   }
 
   // 12th percent factor
-  if (candidate.twelfthPercent > 0) {
+  if (candidate.twelfthPercent != null && candidate.twelfthPercent > 0) {
     eduTotal += candidate.twelfthPercent;
     eduFactors += 1;
   }
 
   // 10th percent factor
-  if (candidate.tenthPercent > 0) {
+  if (candidate.tenthPercent != null && candidate.tenthPercent > 0) {
     eduTotal += candidate.tenthPercent;
     eduFactors += 1;
   }
@@ -237,10 +237,10 @@ export function matchScore(
   if (matchedSkills.length > 0) {
     evidenceSnippets.push(`Matched skills: ${matchedSkills.slice(0, 4).join(', ')}`);
   }
-  if (candidate.experienceYears > 0) {
+  if (candidate.experienceYears != null && candidate.experienceYears > 0) {
     evidenceSnippets.push(`${candidate.experienceYears}y relevant industry experience`);
   }
-  if (candidate.cgpa > 0) {
+  if (candidate.cgpa != null && candidate.cgpa > 0) {
     evidenceSnippets.push(`Academic CGPA: ${candidate.cgpa}/10 (${candidate.college})`);
   }
   if (candidate.projects && candidate.projects.length > 0) {

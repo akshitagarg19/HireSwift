@@ -1,6 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
+import { api, USE_MOCK } from '@/api'
+import { Job } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
@@ -27,7 +29,18 @@ export const JobsPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Paused' | 'Closed'>('All')
   const [jobToDelete, setJobToDelete] = useState<string | null>(null)
 
-  const companyJobs = jobs.filter((j) => j.companyId === currentCompanyId)
+  // In live mode, fetch jobs from API
+  const [liveJobs, setLiveJobs] = useState<Job[]>([])
+  useEffect(() => {
+    if (!USE_MOCK) {
+      api.getJobs()
+        .then((res) => setLiveJobs(res))
+        .catch(() => {})
+    }
+  }, [])
+
+  const allJobs = USE_MOCK ? jobs : (liveJobs.length > 0 ? liveJobs : jobs)
+  const companyJobs = allJobs.filter((j) => j.companyId === currentCompanyId || !USE_MOCK)
 
   const filteredJobs = companyJobs.filter((job) => {
     const matchesSearch =

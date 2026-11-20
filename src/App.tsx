@@ -39,8 +39,6 @@ const PageLoadingFallback: React.FC = () => (
 )
 
 export const App: React.FC = () => {
-  const defaultAppRoute = isFeatureEnabled('enableDashboard') ? '/app/dashboard' : '/app/candidates'
-
   return (
     <BrowserRouter>
       <Suspense fallback={<PageLoadingFallback />}>
@@ -48,14 +46,29 @@ export const App: React.FC = () => {
           {/* Public Marketing Landing Page */}
           <Route path="/" element={<HomePage />} />
 
-          {/* Public Auth & Careers Routes */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
-          <Route path="/onboarding" element={<OnboardingPage />} />
-          <Route path="/careers/:companySlug" element={<CareersPage />} />
-          <Route path="/careers/:companySlug/:jobId" element={<JobApplicationPage />} />
+          {/* Public Auth & Careers Routes - Disabled routes redirect to /app/candidates */}
+          <Route
+            path="/login"
+            element={isFeatureEnabled('enableAuth') ? <LoginPage /> : <Navigate to="/app/candidates" replace />}
+          />
+          <Route
+            path="/signup"
+            element={isFeatureEnabled('enableAuth') ? <SignupPage /> : <Navigate to="/app/candidates" replace />}
+          />
+          <Route
+            path="/onboarding"
+            element={isFeatureEnabled('enableOnboarding') ? <OnboardingPage /> : <Navigate to="/app/candidates" replace />}
+          />
+          <Route
+            path="/careers/:companySlug"
+            element={isFeatureEnabled('enableCareers') ? <CareersPage /> : <Navigate to="/app/candidates" replace />}
+          />
+          <Route
+            path="/careers/:companySlug/:jobId"
+            element={isFeatureEnabled('enableCareers') ? <JobApplicationPage /> : <Navigate to="/app/candidates" replace />}
+          />
 
-          {/* Protected App Routes */}
+          {/* Main App Routes - /app redirects to /app/upload */}
           <Route
             path="/app"
             element={
@@ -64,21 +77,36 @@ export const App: React.FC = () => {
               </ProtectedRoute>
             }
           >
-            <Route index element={<Navigate to={defaultAppRoute} replace />} />
-            <Route path="dashboard" element={<DashboardPage />} />
+            <Route index element={<Navigate to="/app/upload" replace />} />
+            <Route
+              path="dashboard"
+              element={isFeatureEnabled('enableDashboard') ? <DashboardPage /> : <Navigate to="/app/candidates" replace />}
+            />
+            <Route path="upload" element={<UploadPage />} />
+            <Route path="candidates" element={<CandidatesPage />} />
+            <Route path="candidates/:id" element={<CandidateDetailPage />} />
             <Route path="jobs" element={<JobsPage />} />
             <Route path="jobs/new" element={<JobCreatePage />} />
             <Route path="jobs/:id" element={<JobDetailPage />} />
-            <Route path="candidates" element={<CandidatesPage />} />
-            <Route path="candidates/:id" element={<CandidateDetailPage />} />
-            <Route path="upload" element={<UploadPage />} />
             <Route path="pipeline" element={<PipelinePage />} />
             <Route path="compare" element={<ComparePage />} />
             <Route path="insights" element={<InsightsPage />} />
-            <Route path="emails" element={<EmailsPage />} />
-            <Route path="duplicates" element={<DuplicatesPage />} />
-            <Route path="fairness" element={<FairnessPage />} />
-            <Route path="settings" element={<SettingsPage />} />
+            <Route
+              path="duplicates"
+              element={isFeatureEnabled('enableDuplicates') ? <DuplicatesPage /> : <Navigate to="/app/candidates" replace />}
+            />
+            <Route
+              path="emails"
+              element={isFeatureEnabled('enableEmails') ? <EmailsPage /> : <Navigate to="/app/candidates" replace />}
+            />
+            <Route
+              path="fairness"
+              element={isFeatureEnabled('enableFairness') ? <FairnessPage /> : <Navigate to="/app/candidates" replace />}
+            />
+            <Route
+              path="settings"
+              element={isFeatureEnabled('enableSettings') ? <SettingsPage /> : <Navigate to="/app/candidates" replace />}
+            />
           </Route>
 
           {/* 404 Catch-All */}

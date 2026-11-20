@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Avatar } from '@/components/ui/Avatar'
 import { toast } from 'sonner'
+import { isFeatureEnabled } from '@/config/features'
 import {
   Zap,
   CheckCircle2,
@@ -66,10 +67,14 @@ export const HomePage: React.FC = () => {
   // FAQ Accordion State
   const [openFaq, setOpenFaq] = useState<number | null>(0)
 
+  const appRoute = isFeatureEnabled('enableDashboard') ? '/app/dashboard' : '/app/upload'
+  const authRoute = isFeatureEnabled('enableAuth') ? '/signup' : '/app/upload'
+  const loginRoute = isFeatureEnabled('enableAuth') ? '/login' : '/app/upload'
+
   const handleLiveDemoClick = () => {
     login('admin@novalabs.com')
-    toast.success('Signed in as Admin (Nova Labs Pvt Ltd)')
-    navigate('/app/dashboard')
+    toast.success('Launching HireSwift Workspace')
+    navigate(appRoute)
   }
 
   const scrollToSection = (id: string) => {
@@ -137,20 +142,20 @@ export const HomePage: React.FC = () => {
 
           {/* Action CTAs */}
           <div className="hidden md:flex items-center gap-3">
-            {currentUser ? (
-              <Link to="/app/dashboard">
+            {currentUser || !isFeatureEnabled('enableAuth') ? (
+              <Link to={appRoute}>
                 <Button variant="primary" size="sm" rightIcon={<ArrowRight className="w-3.5 h-3.5" />}>
-                  Go to Dashboard
+                  Launch App
                 </Button>
               </Link>
             ) : (
               <>
-                <Link to="/login">
+                <Link to={loginRoute}>
                   <Button variant="ghost" size="sm">
                     Sign in
                   </Button>
                 </Link>
-                <Link to="/signup">
+                <Link to={authRoute}>
                   <Button variant="primary" size="sm">
                     Start Free
                   </Button>
@@ -199,20 +204,20 @@ export const HomePage: React.FC = () => {
               FAQ
             </button>
             <div className="pt-2 border-t border-border flex flex-col gap-2">
-              {currentUser ? (
-                <Link to="/app/dashboard" className="w-full">
+              {currentUser || !isFeatureEnabled('enableAuth') ? (
+                <Link to={appRoute} className="w-full">
                   <Button variant="primary" size="sm" className="w-full">
-                    Go to Dashboard
+                    Launch App
                   </Button>
                 </Link>
               ) : (
                 <>
-                  <Link to="/login" className="w-full">
+                  <Link to={loginRoute} className="w-full">
                     <Button variant="outline" size="sm" className="w-full">
                       Sign in
                     </Button>
                   </Link>
-                  <Link to="/signup" className="w-full">
+                  <Link to={authRoute} className="w-full">
                     <Button variant="primary" size="sm" className="w-full">
                       Start Free
                     </Button>
@@ -244,7 +249,7 @@ export const HomePage: React.FC = () => {
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 pt-2">
-              <Link to="/signup">
+              <Link to={authRoute}>
                 <Button variant="primary" size="lg" className="w-full sm:w-auto font-semibold">
                   Start free
                 </Button>
@@ -647,7 +652,7 @@ export const HomePage: React.FC = () => {
                   <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-600" /> Basic Kanban pipeline</li>
                 </ul>
               </div>
-              <Link to="/signup">
+              <Link to={authRoute}>
                 <Button variant="outline" className="w-full">Get Started</Button>
               </Link>
             </div>
@@ -669,7 +674,7 @@ export const HomePage: React.FC = () => {
                   <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-600" /> Blind screening compliance</li>
                 </ul>
               </div>
-              <Link to="/signup">
+              <Link to={authRoute}>
                 <Button variant="primary" className="w-full">Start 14-Day Trial</Button>
               </Link>
             </div>
@@ -688,7 +693,7 @@ export const HomePage: React.FC = () => {
                   <li className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-600" /> Dedicated support & API access</li>
                 </ul>
               </div>
-              <Link to="/signup">
+              <Link to={authRoute}>
                 <Button variant="outline" className="w-full">Contact Sales</Button>
               </Link>
             </div>
@@ -789,7 +794,7 @@ export const HomePage: React.FC = () => {
               <li><button onClick={() => scrollToSection('features')} className="hover:text-text">Features</button></li>
               <li><button onClick={() => scrollToSection('how-it-works')} className="hover:text-text">How It Works</button></li>
               <li><button onClick={() => scrollToSection('pricing')} className="hover:text-text">Pricing</button></li>
-              <li><Link to="/login" className="hover:text-text">Recruiter Sign In</Link></li>
+              <li><Link to={loginRoute} className="hover:text-text">{isFeatureEnabled('enableAuth') ? 'Recruiter Sign In' : 'Recruiter Workspace'}</Link></li>
             </ul>
           </div>
 

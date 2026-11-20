@@ -522,7 +522,7 @@ Projects: Developed scalable distributed dashboard with ${candSkills.slice(0, 2)
     name: dup1a.name.split(' ')[0] + ' ' + dup1a.name.split(' ')[1].charAt(0) + '.',
     resumeFileName: `${dup1a.name.split(' ')[0]}_updated_cv.pdf`,
     createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-    experienceYears: dup1a.experienceYears + 0.5,
+    experienceYears: (dup1a.experienceYears ?? 0) + 0.5,
   }
   candidates.push(dup1b)
   duplicateGroups.push({

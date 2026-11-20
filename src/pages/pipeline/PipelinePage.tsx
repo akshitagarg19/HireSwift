@@ -254,9 +254,8 @@ export const PipelinePage: React.FC = () => {
     })
 
   const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
-  const stagesToRender = (company.settings?.pipelineStages && company.settings.pipelineStages.length > 0)
-    ? company.settings.pipelineStages
-    : PIPELINE_STAGES
+  // Exactly 5 Kanban columns per plan
+  const stagesToRender = PIPELINE_STAGES
 
   // Map into pipeline columns
   const columnData = stagesToRender.map((stage) => ({

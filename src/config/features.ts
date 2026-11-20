@@ -16,15 +16,15 @@ export interface FeatureFlags {
 }
 
 export const FEATURES: FeatureFlags = {
-  enableAuth: true,
-  enableCompanySwitcher: true,
-  enableOnboarding: true,
-  enableCareers: true,
-  enableFairness: true,
+  enableAuth: false,
+  enableCompanySwitcher: false,
+  enableOnboarding: false,
+  enableCareers: false,
+  enableFairness: false,
   enableEmails: true,
-  enableSettings: true,
+  enableSettings: false,
   enableDuplicates: true,
-  enableDashboard: true,
+  enableDashboard: false,
 }
 
 export const isFeatureEnabled = (feature: keyof FeatureFlags): boolean => {

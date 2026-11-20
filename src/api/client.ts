@@ -2,10 +2,14 @@ import { z } from 'zod'
 import { Candidate, Job, Application, Company } from '@/types'
 import { useAppStore } from '@/store'
 import { matchScore } from '@/lib/scoring'
+import { ApiCandidateSchema, fromApiCandidate, toApiCandidate } from './mappers'
 
 // Environment Configurations
-export const API_BASE_URL = import.meta.env.VITE_API_URL || ''
-export const USE_MOCK = import.meta.env.VITE_USE_MOCK !== 'false'
+export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+export const USE_MOCK =
+  import.meta.env.VITE_USE_MOCK !== undefined
+    ? import.meta.env.VITE_USE_MOCK === 'true'
+    : import.meta.env.DEV
 
 export class ApiError extends Error {
   constructor(
@@ -64,16 +68,18 @@ export const CandidateItemSchema = z.object({
 })
 
 export const CandidatesListResponseSchema = z.object({
-  items: z.array(z.any()),
+  items: z.array(ApiCandidateSchema),
   total: z.number(),
-  page: z.number(),
-  page_size: z.number(),
+  page: z.number().optional().default(1),
+  page_size: z.number().optional().default(12),
 })
 
 export const JobRankingItemSchema = z.object({
   candidate_id: z.string(),
-  candidate: z.any(),
-  application_id: z.string(),
+  candidate: ApiCandidateSchema.optional(),
+  name: z.string().optional(),
+  college: z.string().optional(),
+  application_id: z.string().optional().default(''),
   match_score: z.number(),
   breakdown: z.object({
     skills: z.number(),
@@ -81,10 +87,10 @@ export const JobRankingItemSchema = z.object({
     education: z.number(),
     semantic: z.number(),
   }),
-  matched_skills: z.array(z.string()),
-  missing_skills: z.array(z.string()),
-  explanation: z.string(),
-  stage: z.string(),
+  matched_skills: z.array(z.string()).default([]),
+  missing_skills: z.array(z.string()).default([]),
+  explanation: z.string().default(''),
+  stage: z.string().default('applied'),
 })
 
 export const JobRankingResponseSchema = z.object({
@@ -251,24 +257,30 @@ export const mockApi = {
 
     const filtered = all.filter((cand) => {
       // Unknown inclusion check: if include_unknown is false and fields are empty/zero
-      const hasUnknownCgpa = cand.cgpa <= 0
-      const hasUnknownExp = cand.experienceYears === undefined || cand.experienceYears < 0
+      const hasUnknownCgpa = cand.cgpa == null || cand.cgpa <= 0
+      const hasUnknownExp = cand.experienceYears == null || cand.experienceYears < 0
+      const hasUnknownTenth = cand.tenthPercent == null || cand.tenthPercent <= 0
+      const hasUnknownTwelfth = cand.twelfthPercent == null || cand.twelfthPercent <= 0
+
       if (!params.include_unknown) {
         if (params.cgpa_min && params.cgpa_min > 0 && hasUnknownCgpa) return false
+        if (params.tenth_min && params.tenth_min > 0 && hasUnknownTenth) return false
+        if (params.twelfth_min && params.twelfth_min > 0 && hasUnknownTwelfth) return false
+        if (params.exp_min !== undefined && hasUnknownExp) return false
       }
 
       // CGPA Min
       if (params.cgpa_min && params.cgpa_min > 0) {
-        if (!hasUnknownCgpa && cand.cgpa < params.cgpa_min) return false
+        if (!hasUnknownCgpa && (cand.cgpa == null || cand.cgpa < params.cgpa_min)) return false
       }
 
       // 10th & 12th
-      if (params.tenth_min && params.tenth_min > 0 && cand.tenthPercent < params.tenth_min) return false
-      if (params.twelfth_min && params.twelfth_min > 0 && cand.twelfthPercent < params.twelfth_min) return false
+      if (params.tenth_min && params.tenth_min > 0 && (cand.tenthPercent == null || cand.tenthPercent < params.tenth_min)) return false
+      if (params.twelfth_min && params.twelfth_min > 0 && (cand.twelfthPercent == null || cand.twelfthPercent < params.twelfth_min)) return false
 
       // Experience Range
-      if (params.exp_min !== undefined && cand.experienceYears < params.exp_min) return false
-      if (params.exp_max !== undefined && cand.experienceYears > params.exp_max) return false
+      if (params.exp_min !== undefined && (cand.experienceYears == null || cand.experienceYears < params.exp_min)) return false
+      if (params.exp_max !== undefined && (cand.experienceYears != null && cand.experienceYears > params.exp_max)) return false
 
       // City / Location
       if (params.city && params.city !== 'All' && cand.location.toLowerCase() !== params.city.toLowerCase()) {
@@ -319,11 +331,15 @@ export const mockApi = {
 
     // Sorting
     const sorted = [...filtered].sort((a, b) => {
-      if (params.sort === 'cgpa_desc') return b.cgpa - a.cgpa
-      if (params.sort === 'exp_desc') return b.experienceYears - a.experienceYears
+      const aCgpa = a.cgpa ?? 0
+      const bCgpa = b.cgpa ?? 0
+      const aExp = a.experienceYears ?? 0
+      const bExp = b.experienceYears ?? 0
+      if (params.sort === 'cgpa_desc') return bCgpa - aCgpa
+      if (params.sort === 'exp_desc') return bExp - aExp
       if (params.sort === 'name_asc') return a.name.localeCompare(b.name)
       if (params.sort === 'date_desc') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      return b.cgpa - a.cgpa // default
+      return bCgpa - aCgpa // default
     })
 
     const page = params.page || 1
@@ -605,23 +621,34 @@ export const httpApi = {
     const res = await fetch(`${API_BASE_URL}/candidates?${searchParams.toString()}`)
     if (!res.ok) throw new ApiError(res.status, 'Failed to load candidates.')
     const data = await res.json()
-    return CandidatesListResponseSchema.parse(data) as CandidatesListResponse
+    const parsed = CandidatesListResponseSchema.parse(data)
+    return {
+      items: parsed.items.map((raw) => fromApiCandidate(raw)),
+      total: parsed.total,
+      page: parsed.page,
+      page_size: parsed.page_size,
+    }
   },
 
   getCandidate: async (id: string): Promise<Candidate> => {
     const res = await fetch(`${API_BASE_URL}/candidates/${id}`)
     if (!res.ok) throw new ApiError(res.status, 'Candidate not found.')
-    return res.json()
+    const data = await res.json()
+    const parsed = ApiCandidateSchema.parse(data)
+    return fromApiCandidate(parsed)
   },
 
   patchCandidate: async (id: string, updates: Partial<Candidate>): Promise<Candidate> => {
+    const payload = toApiCandidate(updates)
     const res = await fetch(`${API_BASE_URL}/candidates/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
+      body: JSON.stringify(payload),
     })
     if (!res.ok) throw new ApiError(res.status, 'Failed to update candidate.')
-    return res.json()
+    const data = await res.json()
+    const parsed = ApiCandidateSchema.parse(data)
+    return fromApiCandidate(parsed)
   },
 
   getJobs: async (): Promise<Job[]> => {
@@ -660,7 +687,14 @@ export const httpApi = {
     const res = await fetch(`${API_BASE_URL}/jobs/${jobId}/ranking`)
     if (!res.ok) throw new ApiError(res.status, 'Failed to retrieve job rankings.')
     const data = await res.json()
-    return JobRankingResponseSchema.parse(data) as unknown as JobRankingResponse
+    const parsed = JobRankingResponseSchema.parse(data)
+    return {
+      job_id: parsed.job_id,
+      candidates: parsed.candidates.map((c) => ({
+        ...c,
+        candidate: c.candidate ? fromApiCandidate(c.candidate) : undefined,
+      })),
+    } as unknown as JobRankingResponse
   },
 
   getJobSkillGap: async (jobId: string): Promise<SkillGapResponse> => {
@@ -697,7 +731,14 @@ export const httpApi = {
       const err = await res.json().catch(() => ({ detail: 'Comparison failed.' }))
       throw new ApiError(res.status, err.detail || 'Failed to compare candidates.')
     }
-    return res.json()
+    const data = await res.json()
+    return {
+      job: data.job,
+      candidates: (data.candidates || []).map((item: any) => ({
+        ...item,
+        candidate: fromApiCandidate(item.candidate || item),
+      })),
+    }
   },
 }
 

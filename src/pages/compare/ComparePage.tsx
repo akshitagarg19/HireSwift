@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
-import { api } from '@/api'
+import { api, USE_MOCK, CompareCandidateItem } from '@/api'
 import { Button } from '@/components/ui/Button'
 import { ScoreRing } from '@/components/ui/ScoreRing'
 import { Avatar } from '@/components/ui/Avatar'
@@ -85,8 +85,8 @@ export const ComparePage: React.FC = () => {
 
   // Find best value per metric for highlighting best in each row
   const highestScore = Math.max(...evaluatedComparisons.map((c) => c.score), 0)
-  const highestCgpa = Math.max(...selectedCandidates.map((c) => c.cgpa), 0)
-  const highestExp = Math.max(...selectedCandidates.map((c) => c.experienceYears), 0)
+  const highestCgpa = Math.max(...selectedCandidates.map((c) => c.cgpa ?? 0), 0)
+  const highestExp = Math.max(...selectedCandidates.map((c) => c.experienceYears ?? 0), 0)
   const mostSkillsMatched = Math.max(...evaluatedComparisons.map((c) => c.matchedSkills.length), 0)
 
   // Top overall recommendation pick

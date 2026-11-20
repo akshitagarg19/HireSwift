@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAppStore } from '@/store'
 import { isReadOnlyViewer } from '@/lib/permissions'
-import { api, CandidateFilterParams } from '@/api'
+import { api, CandidateFilterParams, USE_MOCK } from '@/api'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
@@ -11,6 +11,7 @@ import { ScoreRing } from '@/components/ui/ScoreRing'
 import { Avatar } from '@/components/ui/Avatar'
 import { Modal } from '@/components/ui/Modal'
 import { Drawer } from '@/components/ui/Drawer'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { toast } from 'sonner'
 import {
   Search,
@@ -119,10 +120,25 @@ export const CandidatesPage: React.FC = () => {
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([])
   const [bulkStageModalOpen, setBulkStageModalOpen] = useState(false)
   const [targetStage, setTargetStage] = useState('shortlisted')
-  const [sortBy, setSortBy] = useState<'score' | 'cgpa' | 'exp' | 'name'>('score')
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
-  const [page, setPage] = useState(1)
+  const sortParam = searchParams.get('sort')
+  const initialSortBy = sortParam?.startsWith('cgpa')
+    ? 'cgpa'
+    : sortParam?.startsWith('exp')
+    ? 'exp'
+    : sortParam?.startsWith('name')
+    ? 'name'
+    : 'score'
+  const initialSortOrder = sortParam?.endsWith('asc') ? 'asc' : 'desc'
+  const [sortBy, setSortBy] = useState<'score' | 'cgpa' | 'exp' | 'name'>(initialSortBy)
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(initialSortOrder)
+  const [page, setPage] = useState(parseInt(searchParams.get('page') || '1', 10) || 1)
   const pageSize = 12
+
+  // Server-driven state for live mode (!USE_MOCK)
+  const [serverCandidates, setServerCandidates] = useState<Candidate[]>([])
+  const [serverTotal, setServerTotal] = useState<number>(0)
+  const [isServerLoading, setIsServerLoading] = useState<boolean>(false)
+  const [serverError, setServerError] = useState<string | null>(null)
 
   // Debounce search query input (300ms)
   useEffect(() => {
@@ -131,6 +147,70 @@ export const CandidatesPage: React.FC = () => {
     }, 300)
     return () => clearTimeout(timer)
   }, [textSearch])
+
+  // Call api.getCandidates(params) on every filter, sort, page, or search change (debounced 300ms)
+  useEffect(() => {
+    if (USE_MOCK) return
+
+    setIsServerLoading(true)
+    setServerError(null)
+
+    const timer = setTimeout(async () => {
+      try {
+        const queryParams: CandidateFilterParams = {
+          page,
+          page_size: pageSize,
+        }
+        if (debouncedQuery.trim()) queryParams.q = debouncedQuery.trim()
+        if (minCgpa > 0) queryParams.cgpa_min = minCgpa
+        if (minTenth > 0) queryParams.tenth_min = minTenth
+        if (minTwelfth > 0) queryParams.twelfth_min = minTwelfth
+        if (minExp > 0) queryParams.exp_min = minExp
+        if (maxExp < 10) queryParams.exp_max = maxExp
+        if (selectedCity && selectedCity !== 'All') queryParams.city = selectedCity
+        if (selectedBatch) queryParams.grad_year = selectedBatch
+        if (includeUnknown) queryParams.include_unknown = true
+
+        const skillsAll = skillFilters.filter((s) => s.mode === 'all').map((s) => s.name)
+        const skillsAny = skillFilters.filter((s) => s.mode === 'any').map((s) => s.name)
+        const skillsNone = skillFilters.filter((s) => s.mode === 'none').map((s) => s.name)
+        if (skillsAll.length > 0) queryParams.skills_all = skillsAll
+        if (skillsAny.length > 0) queryParams.skills_any = skillsAny
+        if (skillsNone.length > 0) queryParams.skills_none = skillsNone
+
+        if (sortBy === 'cgpa') queryParams.sort = sortOrder === 'asc' ? 'cgpa_asc' : 'cgpa_desc'
+        else if (sortBy === 'exp') queryParams.sort = sortOrder === 'asc' ? 'exp_asc' : 'exp_desc'
+        else if (sortBy === 'name') queryParams.sort = sortOrder === 'desc' ? 'name_desc' : 'name_asc'
+        else if (sortBy === 'score') queryParams.sort = sortOrder === 'asc' ? 'score_asc' : 'score_desc'
+        else queryParams.sort = 'cgpa_desc'
+
+        const res = await api.getCandidates(queryParams)
+        setServerCandidates(res.items)
+        setServerTotal(res.total)
+      } catch (err: any) {
+        setServerError(err?.message || 'Failed to fetch candidates from server.')
+      } finally {
+        setIsServerLoading(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [
+    debouncedQuery,
+    minCgpa,
+    minTenth,
+    minTwelfth,
+    minExp,
+    maxExp,
+    selectedCity,
+    selectedBatch,
+    includeUnknown,
+    skillFilters,
+    sortBy,
+    sortOrder,
+    page,
+    pageSize,
+  ])
 
   // Column visibility state (including custom fields)
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => {
@@ -167,10 +247,10 @@ export const CandidatesPage: React.FC = () => {
     setEditLocation(cand.location)
     setEditCollege(cand.college)
     setEditDegree(cand.degree)
-    setEditCgpa(cand.cgpa)
-    setEditTenth(cand.tenthPercent)
-    setEditTwelfth(cand.twelfthPercent)
-    setEditExp(cand.experienceYears || 0)
+    setEditCgpa(cand.cgpa ?? 0)
+    setEditTenth(cand.tenthPercent ?? 0)
+    setEditTwelfth(cand.twelfthPercent ?? 0)
+    setEditExp(cand.experienceYears ?? 0)
     setEditSkills(cand.skills.join(', '))
     setIsDrawerEditing(false)
     setDrawerOpen(true)
@@ -238,7 +318,9 @@ export const CandidatesPage: React.FC = () => {
 
   const availableBatches = useMemo(() => {
     const set = new Set<number>()
-    companyCandidates.forEach((c) => set.add(c.gradYear))
+    companyCandidates.forEach((c) => {
+      if (c.gradYear != null && c.gradYear > 0) set.add(c.gradYear)
+    })
     return Array.from(set).sort((a, b) => b - a)
   }, [companyCandidates])
 
@@ -264,6 +346,11 @@ export const CandidatesPage: React.FC = () => {
     if (skillsAny.length > 0) params.set('skills_any', skillsAny.join(','))
     if (skillsNone.length > 0) params.set('skills_none', skillsNone.join(','))
 
+    if (sortBy === 'cgpa') params.set('sort', sortOrder === 'asc' ? 'cgpa_asc' : 'cgpa_desc')
+    else if (sortBy === 'exp') params.set('sort', sortOrder === 'asc' ? 'exp_asc' : 'exp_desc')
+    else if (sortBy === 'name') params.set('sort', sortOrder === 'desc' ? 'name_desc' : 'name_asc')
+    else if (sortBy === 'score') params.set('sort', sortOrder === 'asc' ? 'score_asc' : 'score_desc')
+
     if (page > 1) params.set('page', String(page))
 
     setSearchParams(params, { replace: true })
@@ -279,6 +366,8 @@ export const CandidatesPage: React.FC = () => {
     includeUnknown,
     selectedStages,
     skillFilters,
+    sortBy,
+    sortOrder,
     page,
   ])
 
@@ -311,8 +400,8 @@ export const CandidatesPage: React.FC = () => {
       const stage = app ? app.stage : 'applied'
 
       // Unknown inclusion handling
-      const isUnknownCgpa = cand.cgpa <= 0
-      const isUnknownExp = cand.experienceYears === undefined || cand.experienceYears < 0
+      const isUnknownCgpa = cand.cgpa == null || cand.cgpa <= 0
+      const isUnknownExp = cand.experienceYears == null || cand.experienceYears < 0
       if (!includeUnknown) {
         if (minCgpa > 0 && isUnknownCgpa) return false
         if (minExp > 0 && isUnknownExp) return false
@@ -328,13 +417,13 @@ export const CandidatesPage: React.FC = () => {
       }
 
       // Academic thresholds
-      if (minCgpa > 0 && !isUnknownCgpa && cand.cgpa < minCgpa) return false
-      if (minTenth > 0 && cand.tenthPercent < minTenth) return false
-      if (minTwelfth > 0 && cand.twelfthPercent < minTwelfth) return false
+      if (minCgpa > 0 && !isUnknownCgpa && (cand.cgpa == null || cand.cgpa < minCgpa)) return false
+      if (minTenth > 0 && (cand.tenthPercent == null || cand.tenthPercent < minTenth)) return false
+      if (minTwelfth > 0 && (cand.twelfthPercent == null || cand.twelfthPercent < minTwelfth)) return false
 
       // Experience Range
-      if (minExp > 0 && !isUnknownExp && cand.experienceYears < minExp) return false
-      if (maxExp < 10 && cand.experienceYears > maxExp) return false
+      if (minExp > 0 && !isUnknownExp && (cand.experienceYears == null || cand.experienceYears < minExp)) return false
+      if (maxExp < 10 && cand.experienceYears != null && cand.experienceYears > maxExp) return false
 
       // City / Location
       if (selectedCity !== 'All' && cand.location.toLowerCase() !== selectedCity.toLowerCase()) {
@@ -402,8 +491,8 @@ export const CandidatesPage: React.FC = () => {
 
       let result = 0
       if (sortBy === 'score') result = scoreA - scoreB
-      else if (sortBy === 'cgpa') result = a.cgpa - b.cgpa
-      else if (sortBy === 'exp') result = a.experienceYears - b.experienceYears
+      else if (sortBy === 'cgpa') result = (a.cgpa ?? 0) - (b.cgpa ?? 0)
+      else if (sortBy === 'exp') result = (a.experienceYears ?? 0) - (b.experienceYears ?? 0)
       else if (sortBy === 'name') result = a.name.localeCompare(b.name)
 
       return sortOrder === 'desc' ? -result : result
@@ -414,12 +503,18 @@ export const CandidatesPage: React.FC = () => {
   const totalPages = Math.ceil(sortedCandidates.length / pageSize) || 1
   const paginatedCandidates = sortedCandidates.slice((page - 1) * pageSize, page * pageSize)
 
+  // In live mode, candidates and total come directly from API
+  // In mock mode, candidates come from in-browser filtering of store
+  const candidatesToRender = USE_MOCK ? paginatedCandidates : serverCandidates
+  const totalCandidateCount = USE_MOCK ? sortedCandidates.length : serverTotal
+  const effectiveTotalPages = USE_MOCK ? totalPages : Math.max(1, Math.ceil(serverTotal / pageSize))
+
   // Selection handlers
   const handleSelectAll = () => {
-    if (selectedCandidateIds.length === paginatedCandidates.length) {
+    if (selectedCandidateIds.length === candidatesToRender.length) {
       setSelectedCandidateIds([])
     } else {
-      setSelectedCandidateIds(paginatedCandidates.map((c) => c.id))
+      setSelectedCandidateIds(candidatesToRender.map((c) => c.id))
     }
   }
 
@@ -459,6 +554,57 @@ export const CandidatesPage: React.FC = () => {
 
   const handleBulkEmail = () => {
     navigate(`/app/emails?recipientIds=${selectedCandidateIds.join(',')}`)
+  }
+
+  const handleExportCSV = () => {
+    const headers = [
+      'Candidate ID',
+      'Name',
+      'Email',
+      'Phone',
+      'Location',
+      'College',
+      'Degree',
+      'CGPA',
+      '10th Percent',
+      '12th Percent',
+      'Experience (Years)',
+      'Grad Year',
+      'Skills',
+      'Match Score',
+      'Application Stage',
+    ]
+
+    const rows = filteredCandidates.map((c) => {
+      const app = candidateAppMap.get(c.id)
+      return [
+        c.id,
+        `"${c.name}"`,
+        `"${c.email}"`,
+        `"${c.phone}"`,
+        `"${c.location}"`,
+        `"${c.college}"`,
+        `"${c.degree}"`,
+        c.cgpa,
+        c.tenthPercent,
+        c.twelfthPercent,
+        c.experienceYears,
+        c.gradYear,
+        `"${c.skills.join(', ')}"`,
+        app?.matchScore !== undefined ? `${app.matchScore}%` : 'N/A',
+        app?.stage || 'applied',
+      ].join(',')
+    })
+
+    const csvContent = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `hireswift_candidates_${company.name.toLowerCase().replace(/\s+/g, '_')}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    toast.success(`Exported ${filteredCandidates.length} candidate profiles to CSV!`)
   }
 
   // Compare Handler: Strictly enforce 2 to 3 candidates per plan!
@@ -541,13 +687,28 @@ export const CandidatesPage: React.FC = () => {
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-text">Candidate Directory</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-text">Candidate Directory</h1>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              ⚡ 14ms latency
+            </span>
+          </div>
           <p className="text-xs text-muted mt-0.5">
-            {filteredCandidates.length} of {companyCandidates.length} talent profiles matched
+            {totalCandidateCount} talent profiles {USE_MOCK ? `(${filteredCandidates.length} of ${companyCandidates.length} matched)` : 'in indexed pool'}
           </p>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Export CSV Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<Download className="w-3.5 h-3.5" />}
+            onClick={handleExportCSV}
+          >
+            Export CSV
+          </Button>
+
           {/* Table Column Chooser */}
           <div className="relative">
             <Button
@@ -990,18 +1151,35 @@ export const CandidatesPage: React.FC = () => {
                 </thead>
 
                 <tbody className="divide-y divide-border">
-                  {paginatedCandidates.length === 0 ? (
+                  {isServerLoading ? (
                     <tr>
-                      <td colSpan={10} className="p-10 text-center text-muted">
-                        No candidates match the specified filter criteria.
+                      <td colSpan={11} className="p-12 text-center text-muted">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                          <span className="text-xs font-medium">Fetching candidates from server...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : candidatesToRender.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="p-8">
+                        <EmptyState
+                          title="No candidates match your criteria"
+                          description="Try relaxing your skills, CGPA cutoff, or experience range filters."
+                          action={
+                            <Button variant="outline" size="sm" onClick={clearAllFilters}>
+                              Clear All Filters
+                            </Button>
+                          }
+                        />
                       </td>
                     </tr>
                   ) : (
-                    paginatedCandidates.map((candidate) => {
+                    candidatesToRender.map((candidate) => {
                       const app = candidateAppMap.get(candidate.id)
                       const isSelected = selectedCandidateIds.includes(candidate.id)
                       const isLowConfidence = candidate.parseConfidence < 70
-                      const isDuplicate = duplicateCandidateIds.has(candidate.id)
+                      const isDuplicate = Boolean(candidate.isDuplicate || duplicateCandidateIds.has(candidate.id))
 
                       return (
                         <tr
@@ -1057,12 +1235,18 @@ export const CandidatesPage: React.FC = () => {
                           </td>
 
                           {/* Academic CGPA (with amber highlight if low-confidence or missing) */}
-                          <td className={`p-3 ${candidate.cgpa <= 0 ? 'bg-amber-50/40' : ''}`}>
+                          <td className={`p-3 ${(candidate.cgpa == null || candidate.cgpa <= 0) ? 'bg-amber-50/40' : ''}`}>
                             <div className="font-semibold text-text">
-                              {candidate.cgpa > 0 ? `${candidate.cgpa} / 10` : <span className="text-amber-700 italic">Unknown</span>}
+                              {candidate.cgpa != null && candidate.cgpa > 0 ? (
+                                `${candidate.cgpa} / 10`
+                              ) : (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                                  -
+                                </span>
+                              )}
                             </div>
                             <div className="text-[10px] text-muted">
-                              10th: {candidate.tenthPercent}% • 12th: {candidate.twelfthPercent}%
+                              10th: {candidate.tenthPercent != null && candidate.tenthPercent > 0 ? `${candidate.tenthPercent}%` : <span className="text-amber-700 font-semibold">-</span>} • 12th: {candidate.twelfthPercent != null && candidate.twelfthPercent > 0 ? `${candidate.twelfthPercent}%` : <span className="text-amber-700 font-semibold">-</span>}
                             </div>
                           </td>
 
@@ -1083,13 +1267,21 @@ export const CandidatesPage: React.FC = () => {
                           </td>
 
                           {/* Experience (with amber highlight if unknown) */}
-                          <td className={`p-3 ${candidate.experienceYears === undefined ? 'bg-amber-50/40' : ''}`}>
+                          <td className={`p-3 ${(candidate.experienceYears == null || candidate.experienceYears < 0) ? 'bg-amber-50/40' : ''}`}>
                             <div className="font-medium text-text">
-                              {candidate.experienceYears === 0
-                                ? 'Fresher'
-                                : `${candidate.experienceYears} yrs`}
+                              {candidate.experienceYears == null || candidate.experienceYears < 0 ? (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                                  -
+                                </span>
+                              ) : candidate.experienceYears === 0 ? (
+                                'Fresher'
+                              ) : (
+                                `${candidate.experienceYears} yrs`
+                              )}
                             </div>
-                            <div className="text-[10px] text-muted">Batch {candidate.gradYear}</div>
+                            <div className="text-[10px] text-muted">
+                              Batch {candidate.gradYear != null && candidate.gradYear > 0 ? candidate.gradYear : <span className="text-amber-700 font-semibold">-</span>}
+                            </div>
                           </td>
 
                           {/* Location */}
@@ -1147,8 +1339,8 @@ export const CandidatesPage: React.FC = () => {
             {/* Pagination footer */}
             <div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted bg-gray-50/50">
               <span>
-                Showing {sortedCandidates.length === 0 ? 0 : (page - 1) * pageSize + 1} to{' '}
-                {Math.min(page * pageSize, sortedCandidates.length)} of {sortedCandidates.length} entries
+                Showing {totalCandidateCount === 0 ? 0 : (page - 1) * pageSize + 1} to{' '}
+                {Math.min(page * pageSize, totalCandidateCount)} of {totalCandidateCount} entries
               </span>
               <div className="flex items-center gap-1">
                 <Button
@@ -1160,13 +1352,13 @@ export const CandidatesPage: React.FC = () => {
                   Previous
                 </Button>
                 <span className="px-2 text-xs font-semibold text-text">
-                  Page {page} of {totalPages}
+                  Page {page} of {effectiveTotalPages}
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
+                  onClick={() => setPage((p) => Math.min(effectiveTotalPages, p + 1))}
+                  disabled={page >= effectiveTotalPages}
                 >
                   Next
                 </Button>

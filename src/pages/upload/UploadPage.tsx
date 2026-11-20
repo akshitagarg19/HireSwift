@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
-import { api, BatchProgress } from '@/api'
+import { api, BatchProgress, USE_MOCK } from '@/api'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { toast } from 'sonner'
@@ -45,11 +45,12 @@ export const UploadPage: React.FC = () => {
 
   const [queue, setQueue] = useState<UploadItem[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [isBatchDone, setIsBatchDone] = useState(false)
   const [progressPercent, setProgressPercent] = useState(0)
   const [activeBatch, setActiveBatch] = useState<BatchProgress | null>(null)
   const [failedFilesList, setFailedFilesList] = useState<Array<{ filename: string; reason: string }>>([])
 
-  // Client-side file validation per plan
+  // Client-side file validation per plan: reject other formats and files > 10MB
   const validateAndAddFiles = (files: File[]) => {
     const newItems: UploadItem[] = []
     const rejected: Array<{ filename: string; reason: string }> = []
@@ -62,7 +63,7 @@ export const UploadPage: React.FC = () => {
       if (!isPdfOrDocx) {
         rejected.push({
           filename: file.name,
-          reason: 'Unsupported file format. Only PDF and DOCX files are allowed.',
+          reason: 'Unsupported file format. Only .pdf and .docx files are accepted.',
         })
         newItems.push({
           id: `upload-${Date.now()}-${idx}`,
@@ -71,12 +72,12 @@ export const UploadPage: React.FC = () => {
           fileSize: `${Math.round(file.size / 1024)} KB`,
           status: 'Failed',
           confidence: 0,
-          failureReason: 'Unsupported file format (only PDF and DOCX accepted).',
+          failureReason: 'Unsupported file format. Only .pdf and .docx files are accepted.',
         })
       } else if (!isValidSize) {
         rejected.push({
           filename: file.name,
-          reason: 'File exceeds 10MB maximum size limit.',
+          reason: 'File size exceeds the 10 MB maximum limit.',
         })
         newItems.push({
           id: `upload-${Date.now()}-${idx}`,
@@ -85,7 +86,7 @@ export const UploadPage: React.FC = () => {
           fileSize: `${Math.round(file.size / 1024)} KB`,
           status: 'Failed',
           confidence: 0,
-          failureReason: 'File size exceeds 10MB limit.',
+          failureReason: 'File size exceeds the 10 MB maximum limit.',
         })
       } else {
         newItems.push({
@@ -166,21 +167,24 @@ export const UploadPage: React.FC = () => {
       const uploadResult = await api.uploadResumesBulk(queuedFiles)
       toast.info(`Parsing batch ${uploadResult.batch_id} initiated. Polling progress...`)
 
-      // 2. Poll GET /batches/{id}/progress
+      // 2. Poll GET /batches/{id}/progress every second
       let completed = false
       let progress = 20
 
       while (!completed) {
-        await new Promise((r) => setTimeout(r, 600))
+        await new Promise((r) => setTimeout(r, 1000))
         const batchProgress = await api.getBatchProgress(uploadResult.batch_id)
         setActiveBatch(batchProgress)
 
-        progress = Math.min(95, progress + 25)
-        setProgressPercent(progress)
+        const total = batchProgress.total_files || 1
+        const processed = batchProgress.processed_files || 0
+        const calcPercent = Math.min(95, Math.round((processed / total) * 100))
+        setProgressPercent(Math.max(progress, calcPercent))
 
         if (batchProgress.status === 'completed' || batchProgress.status === 'failed') {
           completed = true
           setProgressPercent(100)
+          setIsBatchDone(true)
 
           if (batchProgress.failed_files.length > 0) {
             setFailedFilesList((prev) => [...prev, ...batchProgress.failed_files])
@@ -323,25 +327,48 @@ export const UploadPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="pt-2 flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
-          <Button variant="outline" size="sm" onClick={() => handleSimulateDrop(5)}>
-            Simulate 5 Resumes
-          </Button>
-          <Button variant="secondary" size="sm" onClick={() => handleSimulateDrop(10)}>
-            Simulate 10 Resumes
-          </Button>
+        {USE_MOCK && (
+          <div className="pt-2 flex items-center justify-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <Button variant="outline" size="sm" onClick={() => handleSimulateDrop(5)}>
+              Simulate 5 Resumes
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => handleSimulateDrop(10)}>
+              Simulate 10 Resumes
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                resetSeedData()
+                toast.success('Loaded 50+ benchmark test candidates into talent pool!')
+              }}
+            >
+              ⚡ Load 50 Test Candidates
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Done State Callout with View Candidates Button */}
+      {isBatchDone && (
+        <div className="flex items-center justify-between p-4 bg-emerald-50 border border-emerald-200 rounded-xl animate-in fade-in-0">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+            <div>
+              <p className="text-sm font-bold text-emerald-900">Resume Ingestion Complete</p>
+              <p className="text-xs text-emerald-700">All uploaded resumes have been processed and indexed.</p>
+            </div>
+          </div>
           <Button
             variant="primary"
             size="sm"
-            onClick={() => {
-              resetSeedData()
-              toast.success('Loaded 50+ benchmark test candidates into talent pool!')
-            }}
+            rightIcon={<ArrowRight className="w-4 h-4" />}
+            onClick={() => navigate('/app/candidates')}
           >
-            ⚡ Load 50 Test Candidates
+            View candidates
           </Button>
         </div>
-      </div>
+      )}
 
       {/* Progress Bar (when parsing is active) */}
       {isUploading && (
@@ -444,15 +471,18 @@ export const UploadPage: React.FC = () => {
             ))}
           </div>
 
-          {parsedCount > 0 && (
-            <div className="p-3 border-t border-border bg-gray-50/80 flex justify-end">
+          {(parsedCount > 0 || isBatchDone) && (
+            <div className="p-3 border-t border-border bg-gray-50/80 flex items-center justify-between">
+              <span className="text-xs text-muted">
+                {parsedCount} candidate profile(s) ready
+              </span>
               <Button
                 variant="primary"
                 size="sm"
                 rightIcon={<ArrowRight className="w-4 h-4" />}
-                onClick={() => navigate(`/app/jobs/${selectedJobId}`)}
+                onClick={() => navigate('/app/candidates')}
               >
-                View Ranked Candidates ({parsedCount})
+                View candidates
               </Button>
             </div>
           )}

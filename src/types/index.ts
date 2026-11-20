@@ -105,12 +105,12 @@ export interface Candidate {
   college: string;
   degree: string;
   branch: string;
-  gradYear: number;
-  tenthPercent: number;
-  twelfthPercent: number;
-  cgpa: number;
+  gradYear?: number | null;
+  tenthPercent?: number | null;
+  twelfthPercent?: number | null;
+  cgpa?: number | null;
   skills: string[];
-  experienceYears: number;
+  experienceYears?: number | null;
   experience: WorkExperience[];
   projects: ProjectExperience[];
   certifications: string[];
@@ -121,6 +121,8 @@ export interface Candidate {
   source: string;
   createdAt: string;
   customFields: Record<string, string | number | boolean>;
+  isDuplicate?: boolean;
+  duplicateGroupId?: string;
   gender?: 'Male' | 'Female' | 'Other';
   tier?: 'Tier-1' | 'Tier-2' | 'Tier-3';
 }

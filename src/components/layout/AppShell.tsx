@@ -28,6 +28,7 @@ import { CommandPalette } from '@/components/CommandPalette'
 import { cn } from '@/lib/utils'
 import { Role } from '@/types'
 import { isFeatureEnabled } from '@/config/features'
+import { USE_MOCK } from '@/api/client'
 
 export const AppShell: React.FC = () => {
   const navigate = useNavigate()
@@ -68,7 +69,7 @@ export const AppShell: React.FC = () => {
   const navItems = [
     ...(isFeatureEnabled('enableDashboard') ? [{ label: 'Dashboard', path: '/app/dashboard', icon: LayoutDashboard }] : []),
     {
-      label: 'Upload Resumes',
+      label: 'Upload',
       path: '/app/upload',
       icon: UploadCloud,
       badge: lowConfidenceCount > 0 ? `${lowConfidenceCount}` : undefined,
@@ -79,7 +80,6 @@ export const AppShell: React.FC = () => {
     { label: 'Pipeline', path: '/app/pipeline', icon: Kanban },
     { label: 'Compare', path: '/app/compare', icon: Scale },
     { label: 'Insights', path: '/app/insights', icon: BarChart3 },
-    ...(isFeatureEnabled('enableEmails') ? [{ label: 'Emails', path: '/app/emails', icon: Mail }] : []),
     ...(isFeatureEnabled('enableDuplicates')
       ? [
           {
@@ -91,6 +91,7 @@ export const AppShell: React.FC = () => {
           },
         ]
       : []),
+    ...(isFeatureEnabled('enableEmails') ? [{ label: 'Emails', path: '/app/emails', icon: Mail }] : []),
     ...(isFeatureEnabled('enableFairness') ? [{ label: 'Fairness', path: '/app/fairness', icon: ShieldCheck }] : []),
     ...(isFeatureEnabled('enableSettings') ? [{ label: 'Settings', path: '/app/settings', icon: Settings }] : []),
   ]
@@ -289,6 +290,29 @@ export const AppShell: React.FC = () => {
                 <span className="truncate max-w-[130px]">{currentCompany.name}</span>
               </div>
             )}
+
+            {/* Backend Connectivity Status Pill */}
+            <div
+              className={cn(
+                'hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border',
+                USE_MOCK
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+              )}
+              title={
+                USE_MOCK
+                  ? 'Mock API Mode: Fast simulated responses & local state'
+                  : 'FastAPI Backend Mode: Connected to backend endpoints'
+              }
+            >
+              <span
+                className={cn(
+                  'w-1.5 h-1.5 rounded-full animate-pulse',
+                  USE_MOCK ? 'bg-emerald-500' : 'bg-indigo-600'
+                )}
+              />
+              <span>{USE_MOCK ? 'Mock API Engine' : 'FastAPI Connected'}</span>
+            </div>
 
             {/* Notifications Bell */}
             <div className="relative">

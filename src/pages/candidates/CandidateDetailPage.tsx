@@ -1,6 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
+import { api, USE_MOCK } from '@/api'
+import { Candidate } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
@@ -48,7 +50,22 @@ export const CandidateDetailPage: React.FC = () => {
     addScorecard,
   } = useAppStore()
 
-  const candidate = candidates.find((c) => c.id === id)
+  const [liveCandidate, setLiveCandidate] = useState<Candidate | null>(null)
+  const [isLoadingCand, setIsLoadingCand] = useState(false)
+
+  useEffect(() => {
+    if (!id) return
+    if (!USE_MOCK) {
+      setIsLoadingCand(true)
+      api.getCandidate(id)
+        .then((c) => setLiveCandidate(c))
+        .catch(() => {})
+        .finally(() => setIsLoadingCand(false))
+    }
+  }, [id])
+
+  const storeCandidate = candidates.find((c) => c.id === id)
+  const candidate = !USE_MOCK ? (liveCandidate || storeCandidate) : (storeCandidate || liveCandidate)
   const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
   const companyJobs = jobs.filter((j) => j.companyId === currentCompanyId)
 
@@ -145,14 +162,23 @@ export const CandidateDetailPage: React.FC = () => {
     toast.success('Internal note added')
   }
 
-  const handleSaveInlineEdit = () => {
-    updateCandidate(candidate.id, {
+  const handleSaveInlineEdit = async () => {
+    const updates: Partial<Candidate> = {
       name: editName || candidate.name,
       college: editCollege || candidate.college,
       cgpa: editCgpa || candidate.cgpa,
       experienceYears: editExp !== undefined ? editExp : candidate.experienceYears,
       customFields: { ...(candidate.customFields || {}), ...editCustomFields },
-    })
+    }
+    updateCandidate(candidate.id, updates)
+    try {
+      await api.patchCandidate(candidate.id, updates)
+    } catch {
+      // In mock mode or offline, store was already updated
+    }
+    if (liveCandidate) {
+      setLiveCandidate({ ...liveCandidate, ...updates })
+    }
     setIsEditing(false)
     toast.success('Profile updated and scores re-ranked!')
   }
@@ -160,8 +186,8 @@ export const CandidateDetailPage: React.FC = () => {
   const handleStartEdit = () => {
     setEditName(candidate.name)
     setEditCollege(candidate.college)
-    setEditCgpa(candidate.cgpa)
-    setEditExp(candidate.experienceYears)
+    setEditCgpa(candidate.cgpa ?? 0)
+    setEditExp(candidate.experienceYears ?? 0)
     setEditCustomFields({ ...(candidate.customFields || {}) })
     setIsEditing(true)
   }

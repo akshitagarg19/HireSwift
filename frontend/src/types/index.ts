@@ -49,6 +49,28 @@ export interface Company {
   settings: CompanySettings;
 }
 
+export const DEFAULT_DEMO_COMPANY: Company = {
+  id: 'company-nova',
+  name: 'HireSwift Demo',
+  slug: 'hireswift-demo',
+  settings: {
+    scoringWeights: { skills: 40, experience: 25, education: 20, semantic: 15 },
+    pipelineStages: [
+      { id: 'applied', name: 'Applied', color: '#2563EB', isDefault: true },
+      { id: 'shortlisted', name: 'Shortlisted', color: '#7C3AED' },
+      { id: 'interview', name: 'Interview', color: '#F59E0B' },
+      { id: 'offer', name: 'Offer', color: '#16A34A', isHired: true },
+      { id: 'rejected', name: 'Rejected', color: '#DC2626', isReject: true },
+    ],
+    customFields: [],
+    skillSynonyms: {},
+    blindMode: false,
+    hiddenFields: [],
+    retentionDays: 365,
+    learnFromDecisions: false,
+  },
+}
+
 export interface User {
   id: string;
   companyId: string;

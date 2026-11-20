@@ -69,8 +69,12 @@ export const JobsPage: React.FC = () => {
   })
 
   // Calculate counts per job
-  const getJobMetrics = (jobId: string) => {
-    const jobApps = applications.filter((a) => a.jobId === jobId)
+  const getJobMetrics = (job: Job) => {
+    if (!USE_MOCK) {
+      const total = job.applicantCount || 0
+      return { applied: total, shortlisted: 0, interview: 0, offer: 0, total }
+    }
+    const jobApps = applications.filter((a) => a.jobId === job.id)
     const applied = jobApps.filter((a) => a.stage === 'applied').length
     const shortlisted = jobApps.filter((a) => a.stage === 'shortlisted' || a.stage === 'oa').length
     const interview = jobApps.filter((a) => a.stage === 'interview').length
@@ -79,20 +83,36 @@ export const JobsPage: React.FC = () => {
     return { applied, shortlisted, interview, offer, total }
   }
 
-  const handleToggleStatus = (jobId: string, currentStatus: string) => {
-    const nextStatus = currentStatus === 'Active' ? 'Paused' : 'Active'
+  const handleToggleStatus = async (jobId: string, currentStatus: string) => {
+    const nextStatus: 'Active' | 'Paused' = currentStatus === 'Active' ? 'Paused' : 'Active'
+    if (!USE_MOCK) {
+      try {
+        await api.patchJob(jobId, { status: nextStatus })
+        setLiveJobs((prev) => prev.map((j) => (j.id === jobId ? { ...j, status: nextStatus } : j)))
+        toast.success(`Job marked as ${nextStatus}`)
+      } catch (err: any) {
+        toast.error(err?.message || 'Failed to update job status.')
+      }
+      return
+    }
     updateJob(jobId, { status: nextStatus })
     toast.success(`Job marked as ${nextStatus}`)
   }
 
   const handleDelete = () => {
     if (!jobToDelete) return
+    if (!USE_MOCK) {
+      setLiveJobs((prev) => prev.filter((j) => j.id !== jobToDelete))
+      setJobToDelete(null)
+      toast.success('Job posting deleted')
+      return
+    }
     deleteJob(jobToDelete)
     setJobToDelete(null)
     toast.success('Job posting deleted')
   }
 
-  const canEdit = currentUser?.role === 'Admin' || currentUser?.role === 'Recruiter'
+  const canEdit = !USE_MOCK ? true : (currentUser?.role === 'Admin' || currentUser?.role === 'Recruiter')
 
   return (
     <div className="space-y-6">
@@ -189,7 +209,7 @@ export const JobsPage: React.FC = () => {
           />
         ) : (
           filteredJobs.map((job) => {
-            const metrics = getJobMetrics(job.id)
+            const metrics = getJobMetrics(job)
 
             return (
               <div

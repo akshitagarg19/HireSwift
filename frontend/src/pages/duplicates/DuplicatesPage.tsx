@@ -67,7 +67,9 @@ export const DuplicatesPage: React.FC = () => {
 
   // Group by API is_duplicate, group_id, or client-side shared email/phone
   const allGroups = useMemo(() => {
-    const groups: DuplicateGroup[] = [...duplicateGroups.filter((g) => g.companyId === currentCompanyId)]
+    const groups: DuplicateGroup[] = USE_MOCK
+      ? [...duplicateGroups.filter((g) => g.companyId === currentCompanyId)]
+      : []
     const existingGroupIds = new Set(groups.map((g) => g.id))
     const assignedCandIds = new Set<string>()
     groups.forEach((g) => g.candidateIds.forEach((id) => assignedCandIds.add(id)))

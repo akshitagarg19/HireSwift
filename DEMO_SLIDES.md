@@ -33,7 +33,7 @@
 ```
 
 - **Clean Decoupling**: Frontend communicates strictly via typed contracts defined in [API.md](file:///c:/Users/DELL/HireSwift/API.md).
-- **FastAPI Mount & Relative Assets**: Vite configured with `base: './'` for single-container Docker deployment with SPA fallback.
+- **FastAPI Mount & Relative Assets**: Vite configured with `base: '/'` for single-container Docker deployment with SPA fallback.
 - **State Persistence**: Zero data loss across page reloads.
 
 ---
@@ -67,30 +67,38 @@
 
 ---
 
-## 📊 Slide 5: Quality, Test Data & Accuracy Benchmarks
+## 📊 Slide 5: Quality, Test Data & Verification Benchmarks
 
 - **Diverse Test Dataset**:
-  - **61 verified test resumes** in `test-data/resumes/`: Two-column layouts, DOCX tables, mixed CGPA styles (`8.5/10`, `85%`, `3.4/4`), Indian state boards (CBSE, ICSE, SSC, PUC), multiple tech hubs, and intentional duplicate pairs.
+  - **56 verified test resumes** in `test-data/resumes/`: 50 unique candidates + 6 duplicate variants (file-hash exact copy, same email different format, fuzzy name same phone, updated career history, initials name variant).
+  - **3 edge-case files** in `test-data/edge_cases/`: Corrupted PDF header, zero-byte PDF, unsupported `.txt` format.
   - **5 Markdown Job Descriptions** in `test-data/jds/`: Full Stack Engineer, Campus Graduate Trainee, Python Data Engineer, Senior Backend Architect, Staff Frontend React Lead.
-  - **20-Candidate Ground Truth Benchmark** in `test-data/answer_key.csv`: Re-checked with 0 mismatches.
-- **Automated Verification**:
+  - **50-Candidate Ground Truth Benchmark** in `test-data/answer_key.csv`: 14 known-answer queries (F01–F14) verified 100%.
+- **Frontend Automated Verification**:
   - `npm run lint`: 0 TypeScript errors (`tsc --noEmit`).
-  - `npx vitest run`: 15 / 15 unit tests passing.
-  - `npx playwright test`: 13 / 13 end-to-end tests passing (100%).
-  - Zero hardcoded `localhost` calls in production build.
+  - `npm run build`: Production bundle built cleanly with code splitting.
+  - `npm run test`: 15 / 15 unit tests passing (Vitest).
+  - `npm run test:e2e`: 28 / 28 end-to-end tests passing (Playwright, including seed isolation & contract checks).
+  - Zero hardcoded `localhost` calls and zero exposed secrets in production bundle.
+- **Backend Model Verification (Live Backend)**:
+  - Extraction Accuracy: *[fill after live run: parser accuracy]*
+  - Real DB Filter Latency: *[fill after live run: p50/p95 latency]*
+  - Deduplication Recall / Precision: *[fill after live run: ML dedup recall/precision]*
 
 ---
 
 ## 🎬 Slide 6: 3-Minute Live Walkthrough Script
 
 1. **Minute 0:00–0:45 | Bulk Ingestion & Parsing**:
-   - Navigate to `/app/upload`, load sample candidates, and watch the batch progress bar.
+   - Zero login gate: Direct access to recruitment suite with persistent **Blind Mode** toggle in the top bar.
+   - Navigate to `/app/upload`, drag & drop candidate resumes from `test-data/resumes/`, and observe live progress bar and failed file error isolation.
 2. **Minute 0:45–1:30 | Explainable Matching & Smart Filters**:
-   - Open `/app/candidates`, demonstrate tri-state skills chip (`React` AND, `Docker` OR, `Java` NOT), and click "Quick Edit" in the slide-over drawer.
+   - Open `/app/candidates`, demonstrate known-answer query F09 (`Noida`, `Python` AND, `CGPA >= 7.5`, `2+ years`) returning exactly 5 candidates.
+   - Inspect Candidate Drawer with quick profile editing, explainable scoring breakdown, and missing value indicators (`-`).
 3. **Minute 1:30–2:15 | Side-by-Side Comparison**:
-   - Select 3 top candidates, click **"Compare (3)"**, and highlight category winners.
+   - Select 2 or 3 top candidates, click **"Compare Selected"**, and highlight category winners. Demonstrate strict 3-candidate limit guardrail.
 4. **Minute 2:15–2:50 | 5-Stage Kanban & Transition Guardrails**:
-   - Move candidate card from `Applied` to `Shortlisted`. Try dragging directly to `Offer` to demonstrate server rejection toast.
+   - Move candidate card from `Applied` to `Shortlisted`. Try dragging directly to `Offer` to demonstrate server rejection toast and card snap-back.
 5. **Minute 2:50–3:30 | Bonus: Bulk Email & Duplicate Resolution**:
-   - Click **"Email"** from Shortlisted column to preview personalized outreach.
-   - Navigate to `/app/duplicates` to inspect and merge duplicate profiles.
+   - Click **"Email"** from Shortlisted column to preview personalized outreach with template variables.
+   - Navigate to `/app/duplicates` to inspect side-by-side diffs and merge duplicate profiles.

@@ -502,6 +502,7 @@ export const HomePage: React.FC = () => {
                 type="range"
                 min="0"
                 max="80"
+                aria-label="Skills Fit Weight"
                 value={demoWeights.skills}
                 onChange={(e) => setDemoWeights({ ...demoWeights, skills: parseInt(e.target.value, 10) })}
                 className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary"
@@ -517,6 +518,7 @@ export const HomePage: React.FC = () => {
                 type="range"
                 min="0"
                 max="80"
+                aria-label="Experience Weight"
                 value={demoWeights.experience}
                 onChange={(e) => setDemoWeights({ ...demoWeights, experience: parseInt(e.target.value, 10) })}
                 className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary"
@@ -532,6 +534,7 @@ export const HomePage: React.FC = () => {
                 type="range"
                 min="0"
                 max="80"
+                aria-label="Education and CGPA Weight"
                 value={demoWeights.education}
                 onChange={(e) => setDemoWeights({ ...demoWeights, education: parseInt(e.target.value, 10) })}
                 className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary"

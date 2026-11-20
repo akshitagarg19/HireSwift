@@ -43,8 +43,10 @@ interface KanbanCardProps {
 
 const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick, onMoveTo }) => {
   const { companies, currentCompanyId, currentUser, isBlindMode } = useAppStore()
-  const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
-  const isReadOnly = isReadOnlyViewer(currentUser?.role)
+  const company = USE_MOCK
+    ? (companies.find((c) => c.id === currentCompanyId) || companies[0])
+    : { settings: { customFields: [] } }
+  const isReadOnly = USE_MOCK ? isReadOnlyViewer(currentUser?.role) : false
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: application.id,
@@ -63,6 +65,8 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick
       ref={setNodeRef}
       {...listeners}
       {...attributes}
+      role="article"
+      tabIndex={0}
       className={`bg-white rounded-xl border border-border p-3.5 shadow-soft hover:shadow-card hover:border-indigo-200 transition-all ${
         isReadOnly ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'
       } space-y-2.5 ${isDragging ? 'opacity-30' : ''}`}
@@ -109,6 +113,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick
         <div className="pt-1.5 border-t border-gray-100 flex items-center justify-between text-[11px]">
           <span className="text-muted font-medium">Move to:</span>
           <select
+            aria-label={`Move ${displayName} to stage`}
             defaultValue=""
             onChange={(e) => {
               if (e.target.value) {
@@ -406,6 +411,7 @@ export const PipelinePage: React.FC = () => {
           <div className="flex items-center gap-2">
             <Briefcase className="w-4 h-4 text-muted" />
             <select
+              aria-label="Filter pipeline by Job"
               value={selectedJobId}
               onChange={(e) => setSelectedJobId(e.target.value)}
               className="h-9 px-3 rounded-lg border border-border bg-white text-xs font-semibold text-text cursor-pointer"

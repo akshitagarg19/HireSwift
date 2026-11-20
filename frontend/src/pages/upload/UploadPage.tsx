@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
 import { api, BatchProgress, USE_MOCK } from '@/api'
@@ -45,10 +45,13 @@ export const UploadPage: React.FC = () => {
   // In live mode, fetch target jobs from API
   const [liveJobs, setLiveJobs] = useState<any[]>([])
   const [jobsLoaded, setJobsLoaded] = useState(USE_MOCK)
+  const [jobsError, setJobsError] = useState<string | null>(null)
   const [selectedJobId, setSelectedJobId] = useState<string>('')
 
-  useEffect(() => {
+  const fetchJobs = useCallback(() => {
     if (!USE_MOCK) {
+      setJobsLoaded(false)
+      setJobsError(null)
       api.getJobs()
         .then((res) => {
           setLiveJobs(res)
@@ -58,7 +61,8 @@ export const UploadPage: React.FC = () => {
             setSelectedJobId('')
           }
         })
-        .catch(() => {
+        .catch((err: any) => {
+          setJobsError(err?.message || 'Failed to fetch jobs from server.')
           setLiveJobs([])
           setSelectedJobId('')
         })
@@ -72,6 +76,10 @@ export const UploadPage: React.FC = () => {
       }
     }
   }, [currentCompanyId, jobs])
+
+  useEffect(() => {
+    fetchJobs()
+  }, [fetchJobs])
 
   // In live mode, NEVER fall back to store jobs - only use liveJobs from API
   const companyJobs = USE_MOCK
@@ -321,6 +329,7 @@ export const UploadPage: React.FC = () => {
           <label className="text-xs font-semibold text-text whitespace-nowrap">Target Job:</label>
           <select
             data-testid="upload-job-select"
+            aria-label="Target Job Requisition"
             value={selectedJobId}
             onChange={(e) => setSelectedJobId(e.target.value)}
             className="h-9 px-3 rounded-lg border border-border bg-white text-xs font-semibold text-text cursor-pointer"
@@ -334,6 +343,19 @@ export const UploadPage: React.FC = () => {
           </select>
         </div>
       </div>
+
+      {/* Jobs Loading Error Banner */}
+      {jobsError && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-rose-800 text-sm font-semibold">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{jobsError}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchJobs}>
+            Retry
+          </Button>
+        </div>
+      )}
 
       {/* Empty state when no jobs are available */}
       {companyJobs.length === 0 && jobsLoaded && (

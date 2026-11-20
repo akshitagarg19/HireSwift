@@ -1,17 +1,21 @@
 # Dependencies
 node_modules/
+frontend/node_modules/
 /.pnp
 .pnp.js
 
 # Production build artifacts
 dist/
+frontend/dist/
 build/
 *.zip
 
 # Testing
 coverage/
 test-results/
+frontend/test-results/
 playwright-report/
+frontend/playwright-report/
 blob-report/
 playwright/.cache/
 
@@ -19,6 +23,8 @@ playwright/.cache/
 .env
 .env*
 !.env.example
+frontend/.env*
+!frontend/.env.example
 
 # Editor directories and files
 .vscode/*

@@ -1,6 +1,7 @@
 # HireSwift — Intelligent ATS for Growing Hiring Teams
 
 **GitHub Repository**: [https://github.com/akshitagarg19/HireSwift](https://github.com/akshitagarg19/HireSwift)  
+**Live Demo URL**: [add live URL after deployment]  
 **Authors**: **Akshita** *(Backend & API)* & **Ayush** *(Frontend & Test Data)*  
 
 ---
@@ -102,29 +103,47 @@ async def serve_spa(full_path: str):
 
 ---
 
-## ⚡ Setup & Testing
+## ⚡ Setup & Execution Modes
 
-### Running the Frontend with Stub Server
-The repository includes a standalone stub server (`frontend/tools/stub-server.mjs`) serving realistic benchmark data from `test-data/` to test live mode without requiring the Python backend:
+HireSwift can be executed in three distinct modes depending on your development and evaluation goals:
 
+### Mode 1: Frontend Alone (In-Browser Mock Mode)
+Run the frontend standalone with in-browser mock APIs and local simulated data:
 ```bash
-# 1. Install frontend dependencies
 npm --prefix frontend install
+VITE_USE_MOCK=true npm --prefix frontend run dev
+```
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-# 2. Start the stub server (runs on port 8000)
+### Mode 2: Frontend with Contract Stub Server (Contract Verification)
+The repository includes a standalone stub server (`frontend/tools/stub-server.mjs`) serving benchmark data from `test-data/` to test live-mode UI rendering and API contracts without requiring Python dependencies:
+```bash
+# 1. Start the stub server (runs on port 8000)
 node frontend/tools/stub-server.mjs
 
-# 3. In another terminal, start the frontend dev server (port 5173, proxies /api -> 8000)
-npm --prefix frontend run dev
+# 2. In another terminal, start the frontend in live mode (proxies /api -> 8000)
+VITE_USE_MOCK=false npm --prefix frontend run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+### Mode 3: Frontend with Real Backend (FastAPI Production Mode)
+Run against the full Python/FastAPI backend:
+```bash
+# 1. Start Akshita's FastAPI backend (port 8000)
+uvicorn main:app --port 8000 --reload
+
+# 2. Start the frontend (or serve frontend/dist via FastAPI StaticFiles)
+VITE_USE_MOCK=false npm --prefix frontend run dev
+```
 
 ---
 
 ## 🛠️ Verification & Quality Assurance Suite
 
 HireSwift includes a comprehensive QA automation harness and ground-truth benchmark suite:
+
+### Stub Mode vs. Live Mode QA Evaluation:
+- **Stub Mode (`QA_MODE=stub`)**: Serves pre-curated ground truth from `test-data/answer_key.csv`. Strictly validates frontend UI rendering, navigation routes, API parameter schemas, empty/error state handling, and contract conformance. It does NOT evaluate backend parser accuracy or database filter latency.
+- **Live Mode (`QA_MODE=live`)**: Connects to the real FastAPI backend. Evaluates actual PDF/DOCX parser extraction accuracy, OCR quality, live database filter query latency, MinHash/clustering deduplication, and model ranking consistency against the ground-truth benchmark.
 
 ### 1. Automated Ground-Truth QA Harness (`qa/run.mjs`)
 Validates all 6 core recruiting engines (Resume Upload & Edge Cases, Parser Accuracy, 14 Filter Tests F01–F14, JD Parsing & Top-15 Ranking, Deduplication Recall & Precision, Pipeline Transitions & Compare Limits).

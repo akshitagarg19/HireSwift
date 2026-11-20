@@ -8,6 +8,7 @@ import { ScoreRing } from '@/components/ui/ScoreRing'
 import { Avatar } from '@/components/ui/Avatar'
 import { SkillChip } from '@/components/ui/SkillChip'
 import { Input } from '@/components/ui/Input'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs'
 import { toast } from 'sonner'
 import {
@@ -57,7 +58,9 @@ export const JobDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(!USE_MOCK)
   const [error, setError] = useState<string | null>(null)
 
-  const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
+  const company = USE_MOCK
+    ? (companies.find((c) => c.id === currentCompanyId) || companies[0])
+    : { name: 'HireSwift Demo', settings: { scoringWeights: { skills: 40, experience: 25, education: 20, semantic: 15 }, customFields: [] } }
 
   // Live rankings from API
   const [rankingData, setRankingData] = useState<JobRankingCandidate[]>([])
@@ -354,13 +357,10 @@ export const JobDetailPage: React.FC = () => {
         {/* TAB 1: Ranked Candidates from GET /jobs/{id}/ranking */}
         <TabsContent value="ranked" className="space-y-3 mt-4">
           {rankingData.length === 0 ? (
-            <div className="p-12 text-center bg-white rounded-xl border border-dashed border-border">
-              <Users className="w-10 h-10 text-muted mx-auto mb-2" />
-              <h3 className="text-base font-semibold text-text">No applicants scored for this job yet</h3>
-              <p className="text-xs text-muted mt-1">
-                Click "Re-match Pool" above or upload resumes to score candidates.
-              </p>
-            </div>
+            <EmptyState
+              title="No applicants scored for this job yet"
+              description="Click 'Re-match Pool' above or upload resumes to score candidates."
+            />
           ) : (
             rankingData.map((item, rank) => {
               const { candidate, application_id, match_score, breakdown, matched_skills, missing_skills, explanation, stage } = item

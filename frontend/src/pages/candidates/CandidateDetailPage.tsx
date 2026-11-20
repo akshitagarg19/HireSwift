@@ -32,6 +32,7 @@ import {
 } from 'lucide-react'
 import { matchScore } from '@/lib/scoring'
 import { isReadOnlyViewer } from '@/lib/permissions'
+import { DEFAULT_DEMO_COMPANY } from '@/types'
 
 export const CandidateDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -76,11 +77,13 @@ export const CandidateDetailPage: React.FC = () => {
 
   const storeCandidate = candidates.find((c) => c.id === id)
   const candidate = USE_MOCK ? storeCandidate : liveCandidate
-  const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
-  const companyJobs = jobs.filter((j) => j.companyId === currentCompanyId)
+  const company = USE_MOCK
+    ? (companies.find((c) => c.id === currentCompanyId) || companies[0])
+    : DEFAULT_DEMO_COMPANY
+  const companyJobs = USE_MOCK ? jobs.filter((j) => j.companyId === currentCompanyId) : []
 
   // Find existing applications for this candidate
-  const candidateApps = applications.filter((a) => a.candidateId === id)
+  const candidateApps = USE_MOCK ? applications.filter((a) => a.candidateId === id) : []
   const initialJobId = candidateApps[0]?.jobId || companyJobs[0]?.id || ''
   const [selectedJobId, setSelectedJobId] = useState<string>(initialJobId)
 
@@ -92,7 +95,7 @@ export const CandidateDetailPage: React.FC = () => {
   const [newNoteText, setNewNoteText] = useState('')
 
   // Inline edit mode state
-  const isReadOnly = isReadOnlyViewer(currentUser?.role)
+  const isReadOnly = USE_MOCK ? isReadOnlyViewer(currentUser?.role) : false
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState('')
   const [editCollege, setEditCollege] = useState('')

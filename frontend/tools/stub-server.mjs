@@ -1,13 +1,25 @@
 /**
- * HireSwift Stub Server
- * Serves every endpoint in API.md using ground-truth test data from test-data/.
+ * HireSwift Stub Server (Contract Test Fixture)
+ *
+ * IMPORTANT NOTE ON PURPOSE & SCOPE:
+ * This stub server is strictly a CONTRACT FIXTURE designed for UI integration
+ * and automated API contract testing against the API.md specification.
+ * It serves pre-curated ground-truth candidates from test-data/answer_key.csv.
+ *
+ * IT IS NOT A PERFORMANCE OR ACCURACY MODEL:
+ * - It contains NO real resume parser or OCR engine.
+ * - In-memory latency is NOT representative of database query latency.
+ * - Deduplication is driven by CSV metadata, not live ML/fuzzy clustering.
+ * - Parser accuracy, OCR quality, and real-world latency must be measured
+ *   exclusively against the real backend (QA_MODE=live).
+ *
  * Features:
  *   - Serves 50 unique candidates loaded from answer_key.csv
  *   - Duplicate groups and is_duplicate flags for duplicate pairs
- *   - Real filters matching API.md and passing 14/14 filter_tests.csv
+ *   - Contract-valid filters matching API.md and passing 14/14 filter_tests.csv
  *   - Job competency matching & rankings aligned with jd_answer_key.csv
  *   - Stage transition validation with snap-back error (400)
- *   - Candidate comparison (2-3 OK, 1 or 4+ returns 400)
+ *   - Candidate comparison contract (2-3 OK, 1 or 4+ returns 400)
  *   - Full CORS support
  */
 

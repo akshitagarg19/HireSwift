@@ -36,7 +36,7 @@ import {
   Briefcase,
   FileText,
 } from 'lucide-react'
-import { Candidate, Application } from '@/types'
+import { Candidate, Application, DEFAULT_DEMO_COMPANY } from '@/types'
 
 export interface SkillFilter {
   name: string
@@ -57,11 +57,14 @@ export const CandidatesPage: React.FC = () => {
     isBlindMode,
   } = useAppStore()
 
-  const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
-  const isReadOnly = isReadOnlyViewer(currentUser?.role)
+  const company = USE_MOCK
+    ? (companies.find((c) => c.id === currentCompanyId) || companies[0])
+    : DEFAULT_DEMO_COMPANY
+  const isReadOnly = USE_MOCK ? isReadOnlyViewer(currentUser?.role) : false
 
-  // Duplicate candidate ID set
+  // Duplicate candidate ID set (mock mode only)
   const duplicateCandidateIds = useMemo(() => {
+    if (!USE_MOCK) return new Set<string>()
     const set = new Set<string>()
     duplicateGroups
       .filter((g) => g.companyId === currentCompanyId && g.status === 'Pending')
@@ -697,6 +700,7 @@ export const CandidatesPage: React.FC = () => {
           <div>
             <label className="block text-xs font-semibold text-text mb-1">Target Stage</label>
             <select
+              aria-label="Target Pipeline Stage"
               value={targetStage}
               onChange={(e) => setTargetStage(e.target.value)}
               className="w-full h-9 px-3 rounded-lg border border-border bg-white text-sm text-text"
@@ -810,6 +814,7 @@ export const CandidatesPage: React.FC = () => {
             <Search className="w-4 h-4 text-muted absolute left-3 top-2.5" />
             <input
               type="text"
+              aria-label="Search candidates by name, skill, or college"
               value={textSearch}
               onChange={(e) => setTextSearch(e.target.value)}
               placeholder='Try Natural Language or search candidates by skill/college (e.g. "IIT Delhi", "Python", "Noida")...'
@@ -926,6 +931,7 @@ export const CandidatesPage: React.FC = () => {
                 <span className="text-xs font-semibold text-text">Include Unknown Values</span>
                 <input
                   type="checkbox"
+                  aria-label="Include candidates with unknown values"
                   checked={includeUnknown}
                   onChange={(e) => setIncludeUnknown(e.target.checked)}
                   className="rounded text-primary focus:ring-primary h-4 w-4 cursor-pointer"
@@ -947,6 +953,7 @@ export const CandidatesPage: React.FC = () => {
                 min="0"
                 max="10"
                 step="0.2"
+                aria-label="Minimum CGPA filter"
                 value={minCgpa}
                 onChange={(e) => setMinCgpa(parseFloat(e.target.value))}
                 className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary"
@@ -961,6 +968,7 @@ export const CandidatesPage: React.FC = () => {
                   type="number"
                   min="0"
                   max="100"
+                  aria-label="Minimum 10th grade percentage"
                   value={minTenth || ''}
                   onChange={(e) => setMinTenth(parseInt(e.target.value, 10) || 0)}
                   placeholder="e.g. 75"
@@ -973,6 +981,7 @@ export const CandidatesPage: React.FC = () => {
                   type="number"
                   min="0"
                   max="100"
+                  aria-label="Minimum 12th grade percentage"
                   value={minTwelfth || ''}
                   onChange={(e) => setMinTwelfth(parseInt(e.target.value, 10) || 0)}
                   placeholder="e.g. 75"
@@ -1036,6 +1045,7 @@ export const CandidatesPage: React.FC = () => {
                   type="range"
                   min="0"
                   max="10"
+                  aria-label="Minimum Experience filter in years"
                   value={minExp}
                   onChange={(e) => setMinExp(parseFloat(e.target.value))}
                   className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary"
@@ -1047,6 +1057,7 @@ export const CandidatesPage: React.FC = () => {
             <div>
               <label className="block text-xs font-semibold text-text mb-1">Candidate City</label>
               <select
+                aria-label="Filter by Candidate City"
                 value={selectedCity}
                 onChange={(e) => setSelectedCity(e.target.value)}
                 className="w-full h-8 px-2 text-xs rounded-lg border border-border bg-white text-text"
@@ -1126,7 +1137,7 @@ export const CandidatesPage: React.FC = () => {
                 <thead>
                   <tr className="bg-gray-50/80 border-b border-border text-muted font-semibold">
                     <th className="p-3 w-10">
-                      <button onClick={handleSelectAll} className="p-0.5 text-muted hover:text-text">
+                      <button onClick={handleSelectAll} aria-label="Select all candidates" className="p-0.5 text-muted hover:text-text">
                         {selectedCandidateIds.length === paginatedCandidates.length && paginatedCandidates.length > 0 ? (
                           <CheckSquare className="w-4 h-4 text-primary" />
                         ) : (
@@ -1251,7 +1262,7 @@ export const CandidatesPage: React.FC = () => {
                           }`}
                         >
                           <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                            <button onClick={() => toggleSelect(candidate.id)} className="p-0.5 text-muted hover:text-text">
+                            <button onClick={() => toggleSelect(candidate.id)} aria-label={`Select candidate ${candidate.name}`} className="p-0.5 text-muted hover:text-text">
                               {isSelected ? (
                                 <CheckSquare className="w-4 h-4 text-primary" />
                               ) : (
@@ -1574,7 +1585,7 @@ export const CandidatesPage: React.FC = () => {
                       <h2 className="text-base font-bold text-text truncate">
                         {isBlindMode ? 'Candidate #' + drawerCandidate.id : drawerCandidate.name}
                       </h2>
-                      {duplicateCandidateIds.has(drawerCandidate.id) && (
+                      {Boolean(drawerCandidate.isDuplicate || duplicateCandidateIds.has(drawerCandidate.id)) && (
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
                           Duplicate Found
                         </span>

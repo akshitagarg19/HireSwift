@@ -1,98 +1,113 @@
 # HireSwift ATS — Evaluator Demo Script (< 4 Minutes)
 
-This script walks through the end-to-end recruitment lifecycle on HireSwift in under 4 minutes. HireSwift is pre-seeded with realistic Indian engineering talent and connects directly to the FastAPI backend contract specified in `API.md`.
+This script walks through the end-to-end recruitment lifecycle on HireSwift in under 4 minutes. In live mode (`VITE_USE_MOCK=false`), HireSwift communicates directly with the FastAPI backend contract specified in `API.md` (or the contract stub server `frontend/tools/stub-server.mjs`).
 
 ---
 
-## Prerequisites & Launch
-1. Ensure the web application is running:
+## 📋 Pre-Demo Checklist
+Before starting the live walkthrough:
+1. **Ensure Backend or Stub Server is Running**:
+   - Check health endpoint: `curl http://127.0.0.1:8000/health` (should return 200 OK).
+   - If testing against the contract fixture: `node frontend/tools/stub-server.mjs`.
+2. **Start Frontend Dev Server**:
    ```bash
-   npm run dev
-   # Open browser at http://localhost:5173
+   npm --prefix frontend run dev
+   # App is available at http://localhost:5173
    ```
-2. Navigate directly to `http://localhost:5173/app/jobs`.
+3. **Verify Clean Live Mode**:
+   - Open browser at `http://localhost:5173/`.
+   - Confirm landing page loads cleanly.
+   - Click "Try Live Demo" or navigate to `/app` (redirects directly to `/app/upload` without login gate).
+   - Observe sidebar has exactly: **Upload**, **Candidates**, **Jobs**, **Pipeline**, **Compare**, **Insights**, **Duplicates**, and **Emails**.
+   - Observe the **"Blind Recruitment"** toggle in the top bar.
 
 ---
 
-## Step 1: View & Create a Job (45 Seconds)
-1. **Navigate to Jobs**: Click **Jobs** in the left sidebar (`/app/jobs`).
-   - Notice existing openings: *Senior Full Stack Engineer*, *Backend Python Engineer*, *Campus Trainee 2024*.
-2. **Create or Inspect a Job**:
-   - Click **"Create Job"** (`/app/jobs/new`).
-   - Paste or review job description text.
-   - Click **"Parse JD & Configure"** to see automatic extraction of Required Skills (`React`, `TypeScript`, `Node.js`, `Docker`) and cutoffs.
-   - Click on **"Senior Full Stack Engineer"** to open its detail page (`/app/jobs/job-fs-01`).
-   - Toggle **"Edit Requirements"** in the top-right to adjust scoring weights or required skills, then click **"Save Requirements"** (triggers `PATCH /jobs/{id}`).
-
----
-
-## Step 2: Upload Resume Batch with Client Validation (45 Seconds)
-1. **Navigate to Upload**: Click **Upload Resumes** in the sidebar (`/app/upload`).
-2. **Test Ingestion & Parsing**:
-   - Notice target job selector set to *Senior Full Stack Engineer*.
-   - Click **"Simulate 5 Resumes"** (or drag & drop `.txt`/`.pdf`/`.docx` files from `test-data/resumes/`).
-   - Notice client-side file validation strictly restricting files to PDF/DOCX under 10MB.
+## Step 1: Bulk Resume Ingestion & Validation (45 Seconds)
+1. **Navigate to Upload**: Click **Upload** in the left sidebar (`/app/upload`).
+2. **Highlight Job Link & Batch Drag-and-Drop**:
+   - Show the target job selector (links uploaded resumes directly to an open position via `job_id`).
+   - Drag & drop or select PDF/DOCX resume files from `test-data/resumes/`.
+   - Notice client validation enforcing allowed extensions and file limits.
+3. **Run Batch Ingestion**:
    - Click **"Parse All Queued Resumes"**.
-   - Watch the animated progress bar poll `GET /batches/{id}/progress` until completion (100%).
-   - If test files contain corrupted formatting, observe the **Failed Files** alert with specific rejection reasons.
-   - Click the green **"View Ranked Candidates →"** CTA button that appears upon batch completion.
+   - Watch the real-time progress bar poll `GET /batches/{id}/progress`.
+   - Show per-file failure handling: corrupted files (e.g. `corrupt_resume.pdf`) are isolated with explicit error reasons while valid resumes succeed.
+   - Click the green **"View candidates"** CTA button that routes to `/app/candidates`.
 
 ---
 
-## Step 3: Inspect AI Match Ranking & Score Breakdown (45 Seconds)
-1. On the **Ranked Candidates** tab (`/app/jobs/job-fs-01`):
-   - Candidates are sorted strictly descending by `match_score` from `GET /jobs/{id}/ranking`.
-   - Top candidates display a visual **ScoreRing** and breakdown progress bars across Skills, Experience, Education, and Semantic fit.
-2. **Examine Explainability**:
-   - Click on the **Breakdown Popover** (`matched X/Y`) next to the score.
-   - Review the green chips with checkmarks (`✓ React`, `✓ TypeScript`, `✓ Docker`) and red chips with crosses (`✕ GraphQL`) showing transparent matching logic without hallucinated client scores.
-3. **Inspect Skill Gap & Pipeline Funnel**:
-   - View the **Skill Coverage Chart** (`GET /jobs/{id}/skill-gap`) displaying talent pool coverage for each requirement.
-   - Verify the **Pipeline Funnel** numbers match the candidate stages in the table.
-
----
-
-## Step 4: Multi-Mode Filters & Directory Search (45 Seconds)
+## Step 2: Multi-Mode Smart Filters & Explainable Drawer (45 Seconds)
 1. **Navigate to Candidates Directory**: Click **Candidates** in the sidebar (`/app/candidates`).
-2. **Try Tri-State Skill Chips (AND / OR / NOT)**:
+2. **Demonstrate Tri-State Skill Filtering (AND / OR / NOT)**:
    - Click the `React` skill chip once: turns **Emerald (AND)** (`skills_all=React`).
    - Click `Docker` chip twice: turns **Indigo (OR)** (`skills_any=Docker`).
    - Click `Java` chip three times: turns **Rose (NOT)** (`skills_none=Java`).
-   - Observe URL search parameters updating in real-time (`?skills_all=React&skills_any=Docker&skills_none=Java`).
-3. **Toggle Unknown Values & Highlights**:
-   - Toggle **"Include Unknown"** switch (`include_unknown=true`).
-   - Note amber badge highlights on rows with low parse confidence (<70%) or missing values.
-   - Search `Aditi` in the debounced search box (300ms debounce).
+   - Observe debounced URL search parameters updating in real-time.
+3. **Demonstrate Ground-Truth Query F09**:
+   - Set **City**: `Noida`
+   - Set **Required Skill**: `Python` (AND mode)
+   - Set **CGPA Min**: `7.5`
+   - Set **Experience Min**: `2` years
+   - Point out the exact result: **5 candidates matched** (`C005`, `C011`, `C016`, `C022`, `C030`), proving deterministic server-driven filtering.
+4. **Inspect Candidate Drawer**:
+   - Click any candidate row to open the slide-over drawer.
+   - Point out missing data resilience: unparsed or absent fields render as `"-"` with amber low-confidence styling, never defaulting to invented values like `0` or `75`.
+5. **Toggle Blind Mode**:
+   - Click the **Blind Recruitment** switch in the top bar.
+   - Notice candidate names instantly mask to `"Candidate #<ID>"`, colleges and locations are masked across the directory and drawer.
+   - Show the yellow banner: *"Blind mode active — Identifying information is masked."*
 
 ---
 
-## Step 5: Side-by-Side Comparison (Enforcing 2-3 Candidates) (30 Seconds)
-1. Select 2 candidates using their row checkboxes (e.g. *Aditi Sharma* and *Priya Patel*).
-2. Click **"Compare Selected (2)"** in the top action bar (`/app/compare?ids=...`).
-3. Observe the side-by-side matrix:
-   - **Best Fit**, **Top Academic**, **Highest Exp**, and **Most Coverage** badges highlight the winner of each row.
-   - Notice the **HireSwift AI Top Pick** banner highlighting *Aditi Sharma* (94% Fit).
-4. Try selecting a 4th candidate: notice the system blocks more than 3 candidates with an alert toast.
-5. Click **"Shortlist Candidate"** directly from the top recommendation card.
+## Step 3: Jobs, Explainable Match Scoring & Ranking (45 Seconds)
+1. **Navigate to Jobs**: Click **Jobs** in the sidebar (`/app/jobs`).
+2. **Inspect Job Detail & Candidate Ranking**:
+   - Click into an active job requisition (e.g., *Full Stack Engineer*).
+   - Switch to the **Ranked Candidates** tab (`/app/jobs/{id}`).
+   - Candidates are sorted strictly descending by server match score.
+   - Candidates satisfying hard filter criteria strictly outscore candidates who fail hard filters.
+3. **Explainability Popover**:
+   - Click on the score chip or breakdown icon:
+   - Green chips with checkmarks (`✓ React`, `✓ TypeScript`, `✓ Docker`) show matched competencies.
+   - Red chips with crosses (`✕ GraphQL`) show missing competencies.
+4. **Skill-Gap Analytics**:
+   - Switch to the **Skill Gap** tab (`GET /jobs/{id}/skill-gap`) to show applicant talent pool coverage versus required skills.
 
 ---
 
-## Step 6: 5-Stage Pipeline Kanban & Drag-and-Drop (30 Seconds)
+## Step 4: 5-Stage Kanban Pipeline & Guardrails (45 Seconds)
 1. **Navigate to Pipeline**: Click **Pipeline** in the sidebar (`/app/pipeline`).
 2. **Verify 5 Stages**:
-   - Exactly 5 columns are rendered: **Applied**, **Shortlisted**, **Interview**, **Offer**, **Rejected**.
-3. **Test Transition Validation**:
-   - Drag candidate card from **Applied** to **Offer** (illegal transition):
-     - The card snaps back immediately.
-     - A toast notification displays the server validation rule: `"Illegal transition: Cannot move directly from applied to offer. Candidate must complete Interview stage."`
-   - Move candidate card from **Applied** to **Shortlisted** (valid transition) via drag-and-drop or using the **"Move to"** dropdown button on the card.
-   - Card smoothly drops into the Shortlisted column and persists on browser reload.
+   - Exactly 5 Kanban columns: **Applied**, **Shortlisted**, **Interview**, **Offer**, **Rejected**.
+   - Cards display embedded candidate summaries (name, college, location, CGPA, skills).
+3. **Test Transition Validation & Snap-Back**:
+   - Drag a candidate card from **Applied** directly to **Offer** (illegal direct jump):
+     - The card snaps back immediately to Applied.
+     - A toast notification displays the server rejection rule: *"Illegal transition: Cannot move directly from applied to offer. Candidate must complete Interview stage."*
+   - Drag candidate card from **Applied** to **Shortlisted** (valid transition):
+     - Card smoothly drops into the Shortlisted column and persists.
+
+---
+
+## Step 5: Side-by-Side Compare & Bonus Superpowers (40 Seconds)
+1. **Side-by-Side Compare**:
+   - Navigate to **Compare** (`/app/compare`) or select 2–3 candidates in Candidates Directory.
+   - Shows category winner badges (**Best Fit**, **Top Academic**, **Highest Exp**) and HireSwift AI recommendation.
+   - Show that selecting a 4th candidate is blocked with an alert (enforcing strict 2–3 comparison limits).
+2. **Duplicate Detection**:
+   - Navigate to **Duplicates** (`/app/duplicates`).
+   - Displays detected duplicate groups with signal types (`exact_copy`, `fuzzy_name_same_phone`, `same_email_other_format`).
+   - Side-by-side diff viewer with 1-click merge, dismiss, or keep both.
+3. **Bulk Email Outreach**:
+   - Navigate to **Emails** (`/app/emails`).
+   - Review personalized candidate outreach with variable interpolation (`{{candidate_name}}`, `{{job_title}}`).
 
 ---
 
 ## Quick Reset for Fresh Testing
-To reset the entire talent pool and reload the 50-candidate benchmark dataset at any time:
-- In `/app/upload`, click **"⚡ Load 50 Test Candidates"**, or run in the DevTools console:
+To reset local UI state at any time:
+- In DevTools console:
   ```js
   localStorage.clear(); location.reload();
   ```

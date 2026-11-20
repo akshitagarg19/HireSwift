@@ -299,4 +299,72 @@ test.describe('Task 7: Live Mode & Stub Server Contract Tests', () => {
     await expect.poll(() => capturedJobId).toBeTruthy()
     expect(capturedJobId).toBe('job-101')
   })
+
+  test('9. Poisoned seed data in localStorage never appears in live mode', async ({ page }) => {
+    // Inject poisoned seed into localStorage before page loads
+    await page.addInitScript(() => {
+      localStorage.setItem('hireswift_use_mock', 'false')
+      const poisonedStore = {
+        state: {
+          candidates: [
+            {
+              id: 'poison-c1',
+              name: 'SEED_DATA_SHOULD_NOT_APPEAR',
+              companyId: 'company-nova',
+              email: 'poison@seed.com',
+              location: 'PoisonCity',
+              college: 'PoisonCollege',
+              degree: 'B.Tech',
+              skills: ['PoisonSkill'],
+              parseConfidence: 99,
+            },
+          ],
+          jobs: [
+            {
+              id: 'poison-j1',
+              companyId: 'company-nova',
+              title: 'SEED_DATA_SHOULD_NOT_APPEAR_JOB',
+              department: 'Engineering',
+              location: 'Bengaluru',
+              type: 'Full-time',
+              status: 'Active',
+            },
+          ],
+          applications: [
+            {
+              id: 'poison-a1',
+              companyId: 'company-nova',
+              candidateId: 'poison-c1',
+              jobId: 'poison-j1',
+              stage: 'applied',
+              candidate: {
+                name: 'SEED_DATA_SHOULD_NOT_APPEAR',
+                skills: ['PoisonSkill'],
+              },
+            },
+          ],
+        },
+        version: 0,
+      }
+      localStorage.setItem('hireswift-storage', JSON.stringify(poisonedStore))
+    })
+
+    const targetRoutes = [
+      '/app/candidates',
+      '/app/jobs',
+      '/app/pipeline',
+      '/app/compare',
+      '/app/insights',
+      '/app/duplicates',
+    ]
+
+    for (const route of targetRoutes) {
+      await page.goto(route)
+      await page.waitForLoadState('networkidle')
+      // Assert that poisoned seed strings never appear anywhere in the rendered page
+      await expect(page.getByText('SEED_DATA_SHOULD_NOT_APPEAR')).not.toBeVisible()
+      await expect(page.getByText('SEED_DATA_SHOULD_NOT_APPEAR_JOB')).not.toBeVisible()
+      await expect(page.getByText('PoisonSkill')).not.toBeVisible()
+    }
+  })
 })

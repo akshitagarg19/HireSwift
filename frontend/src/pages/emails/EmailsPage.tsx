@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAppStore } from '@/store'
+import { api, USE_MOCK } from '@/api'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs'
 import { toast } from 'sonner'
 import {
@@ -19,8 +21,36 @@ import {
   CheckCircle2,
   Clock,
   Sparkles,
+  AlertTriangle,
 } from 'lucide-react'
-import { EmailTemplate } from '@/types'
+import { EmailTemplate, Candidate, Job, Application } from '@/types'
+
+const DEFAULT_EMAIL_TEMPLATES: EmailTemplate[] = [
+  {
+    id: 'tmpl-1',
+    companyId: 'company-nova',
+    name: 'Interview Invitation',
+    subject: 'Interview Invitation: {{job_title}} at HireSwift Demo',
+    body: 'Hi {{candidate_name}},\n\nWe were impressed by your background and would love to invite you for an interview for the {{job_title}} position.\n\nProposed Time: {{interview_date}}\n\nPlease let us know if this works for you.\n\nBest regards,\nHiring Team',
+    type: 'Interview',
+  },
+  {
+    id: 'tmpl-2',
+    companyId: 'company-nova',
+    name: 'Application Shortlisted',
+    subject: 'Application Update: Shortlisted for {{job_title}}',
+    body: 'Dear {{candidate_name}},\n\nGreat news! Your profile has been shortlisted for the {{job_title}} role at HireSwift Demo. Our recruitment team will be in touch shortly with next steps.\n\nBest regards,\nTalent Acquisition Team',
+    type: 'Shortlist',
+  },
+  {
+    id: 'tmpl-3',
+    companyId: 'company-nova',
+    name: 'Application Rejection',
+    subject: 'Update on your application for {{job_title}}',
+    body: 'Dear {{candidate_name}},\n\nThank you for taking the time to apply for the {{job_title}} position. While your qualifications are impressive, we have decided to move forward with other candidates at this time.\n\nWe wish you all the best in your search.\n\nBest regards,\nHiring Team',
+    type: 'Rejection',
+  },
+]
 
 export const EmailsPage: React.FC = () => {
   const [searchParams] = useSearchParams()
@@ -37,20 +67,74 @@ export const EmailsPage: React.FC = () => {
     deleteEmailTemplate,
   } = useAppStore()
 
-  const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
-  const companyTemplates = emailTemplates.filter((t) => t.companyId === currentCompanyId)
-  const companyCandidates = candidates.filter((c) => c.companyId === currentCompanyId)
-  const companyJobs = jobs.filter((j) => j.companyId === currentCompanyId)
+  // Live mode data state
+  const [liveCandidates, setLiveCandidates] = useState<Candidate[]>([])
+  const [liveJobs, setLiveJobs] = useState<Job[]>([])
+  const [liveApplications, setLiveApplications] = useState<Application[]>([])
+  const [loading, setLoading] = useState(!USE_MOCK)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchEmailData = useCallback(async () => {
+    if (USE_MOCK) return
+    setLoading(true)
+    setError(null)
+    try {
+      const [candRes, jobRes, appRes] = await Promise.all([
+        api.getCandidates({ page_size: 100 }),
+        api.getJobs(),
+        api.getApplications(),
+      ])
+      setLiveCandidates(candRes.items)
+      setLiveJobs(jobRes)
+      setLiveApplications(appRes)
+    } catch (err: any) {
+      setError(err?.message || 'Failed to load email recipients.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchEmailData()
+  }, [fetchEmailData])
+
+  const company = USE_MOCK
+    ? (companies.find((c) => c.id === currentCompanyId) || companies[0])
+    : { id: 'company-nova', name: 'HireSwift Demo', domain: 'hireswift.demo' }
+
+  const companyTemplates = USE_MOCK
+    ? emailTemplates.filter((t) => t.companyId === currentCompanyId)
+    : DEFAULT_EMAIL_TEMPLATES
+
+  const companyCandidates = USE_MOCK
+    ? candidates.filter((c) => c.companyId === currentCompanyId)
+    : liveCandidates
+
+  const companyJobs = USE_MOCK
+    ? jobs.filter((j) => j.companyId === currentCompanyId)
+    : liveJobs
+
+  const activeApplications = USE_MOCK
+    ? applications.filter((a) => a.companyId === currentCompanyId)
+    : liveApplications
 
   // Recipients filter
   const recipientQuery = searchParams.get('recipientIds')
-  const defaultRecipientIds = recipientQuery
-    ? recipientQuery.split(',').filter(Boolean)
-    : applications
-        .filter((a) => a.companyId === currentCompanyId && a.stage === 'shortlisted')
-        .map((a) => a.candidateId)
+  const defaultRecipientIds = useMemo(() => {
+    if (recipientQuery) return recipientQuery.split(',').filter(Boolean)
+    return activeApplications
+      .filter((a) => a.stage === 'shortlisted')
+      .map((a) => a.candidateId)
+  }, [recipientQuery, activeApplications])
 
   const [selectedRecipientIds, setSelectedRecipientIds] = useState<string[]>(defaultRecipientIds)
+
+  useEffect(() => {
+    if (defaultRecipientIds.length > 0 && selectedRecipientIds.length === 0) {
+      setSelectedRecipientIds(defaultRecipientIds)
+    }
+  }, [defaultRecipientIds])
+
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(companyTemplates[0]?.id || '')
 
   // Email form fields
@@ -263,6 +347,19 @@ export const EmailsPage: React.FC = () => {
         </Button>
       </div>
 
+      {/* Error State with Retry */}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-rose-800 text-sm font-semibold">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchEmailData}>
+            Retry
+          </Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT COLUMN: Composer & Templates (7 cols) */}
         <div className="lg:col-span-7 space-y-4">
@@ -432,26 +529,33 @@ export const EmailsPage: React.FC = () => {
               </div>
 
               <div className="max-h-48 overflow-y-auto space-y-1.5 p-1">
-                {companyCandidates.slice(0, 25).map((c) => {
-                  const isChecked = selectedRecipientIds.includes(c.id)
-                  return (
-                    <label key={c.id} className="flex items-center justify-between text-xs p-1.5 rounded hover:bg-gray-50 cursor-pointer">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) setSelectedRecipientIds([...selectedRecipientIds, c.id])
-                            else setSelectedRecipientIds(selectedRecipientIds.filter((id) => id !== c.id))
-                          }}
-                          className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
-                        />
-                        <span className="font-medium">{c.name}</span>
-                      </div>
-                      <span className="text-[10px] text-muted">{c.college}</span>
-                    </label>
-                  )
-                })}
+                {companyCandidates.length === 0 ? (
+                  <EmptyState
+                    title="No Candidates Available"
+                    description="Upload resumes to populate the candidate outreach list."
+                  />
+                ) : (
+                  companyCandidates.slice(0, 25).map((c) => {
+                    const isChecked = selectedRecipientIds.includes(c.id)
+                    return (
+                      <label key={c.id} className="flex items-center justify-between text-xs p-1.5 rounded hover:bg-gray-50 cursor-pointer">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) setSelectedRecipientIds([...selectedRecipientIds, c.id])
+                              else setSelectedRecipientIds(selectedRecipientIds.filter((id) => id !== c.id))
+                            }}
+                            className="rounded text-primary focus:ring-primary h-3.5 w-3.5"
+                          />
+                          <span className="font-medium">{c.name}</span>
+                        </div>
+                        <span className="text-[10px] text-muted">{c.college}</span>
+                      </label>
+                    )
+                  })
+                )}
               </div>
             </div>
           </div>

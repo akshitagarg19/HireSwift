@@ -29,7 +29,9 @@ export const ComparePage: React.FC = () => {
   const navigate = useNavigate()
   const { currentCompanyId, candidates, jobs, companies, updateApplicationStage, applications, isBlindMode } = useAppStore()
 
-  const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
+  const company = USE_MOCK
+    ? (companies.find((c) => c.id === currentCompanyId) || companies[0])
+    : { name: 'HireSwift Demo', settings: { customFields: [] } }
 
   // Live state
   const [liveJobs, setLiveJobs] = useState<Job[]>([])
@@ -223,6 +225,7 @@ export const ComparePage: React.FC = () => {
             <Briefcase className="w-3.5 h-3.5 text-muted" />
             <span className="text-muted font-medium">JD:</span>
             <select
+              aria-label="Target Job for Comparison"
               value={selectedJobId}
               onChange={(e) => setSelectedJobId(e.target.value)}
               className="bg-transparent font-bold text-text focus:outline-none cursor-pointer"
@@ -237,6 +240,7 @@ export const ComparePage: React.FC = () => {
 
           {selectedIds.length < 3 && (
             <select
+              aria-label="Add candidate to compare"
               onChange={(e) => {
                 if (e.target.value) {
                   handleAddCandidate(e.target.value)

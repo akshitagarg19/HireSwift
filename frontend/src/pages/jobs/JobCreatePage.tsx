@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
+import { api, USE_MOCK } from '@/api'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
@@ -110,7 +111,7 @@ export const JobCreatePage: React.FC = () => {
     }
   }
 
-  const handleSaveJob = (e: React.FormEvent) => {
+  const handleSaveJob = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!title || !jdText) {
       toast.error('Title and Job Description are required.')
@@ -118,6 +119,36 @@ export const JobCreatePage: React.FC = () => {
     }
 
     setIsSaving(true)
+    if (!USE_MOCK) {
+      try {
+        const createdJob = await api.createJob({
+          companyId: currentCompanyId || 'company-nova',
+          title,
+          department,
+          location,
+          type,
+          jdText,
+          requirements: {
+            requiredSkills,
+            preferredSkills,
+            minExperience,
+            minCgpa,
+            gradYears,
+            minTenth,
+            minTwelfth,
+          },
+          status: 'Active',
+        })
+        setIsSaving(false)
+        toast.success('Job posting created and candidates auto-ranked!')
+        navigate(`/app/jobs/${createdJob.id}`)
+      } catch (err: any) {
+        setIsSaving(false)
+        toast.error(err?.message || 'Failed to create job.')
+      }
+      return
+    }
+
     setTimeout(() => {
       const createdJob = addJob({
         companyId: currentCompanyId,

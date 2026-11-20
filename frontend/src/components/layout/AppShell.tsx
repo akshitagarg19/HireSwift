@@ -44,6 +44,8 @@ export const AppShell: React.FC = () => {
     candidates,
     notifications,
     markNotificationRead,
+    isBlindMode,
+    toggleBlindMode,
   } = useAppStore()
 
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
@@ -220,13 +222,22 @@ export const AppShell: React.FC = () => {
 
           {/* Right Actions */}
           <div className="flex items-center gap-3">
-            {/* Blind mode indicator */}
-            {currentCompany.settings?.blindMode && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
-                <Eye className="w-3.5 h-3.5 text-amber-600" />
-                <span>Blind Mode On</span>
-              </div>
-            )}
+            {/* Blind Mode Top-bar Toggle */}
+            <button
+              type="button"
+              onClick={toggleBlindMode}
+              data-testid="blind-mode-toggle"
+              className={cn(
+                'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer',
+                isBlindMode
+                  ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-xs'
+                  : 'bg-white text-muted hover:text-text border-border hover:bg-gray-50'
+              )}
+              title={isBlindMode ? 'Disable Blind Hiring Mode' : 'Enable Blind Hiring Mode'}
+            >
+              <Eye className={cn('w-3.5 h-3.5', isBlindMode ? 'text-amber-700' : 'text-muted')} />
+              <span>Blind Mode: {isBlindMode ? 'ON' : 'OFF'}</span>
+            </button>
 
             {/* Company Display / Switcher */}
             {isFeatureEnabled('enableCompanySwitcher') ? (
@@ -451,6 +462,25 @@ export const AppShell: React.FC = () => {
                 )}
               </React.Fragment>
             ))}
+          </div>
+        )}
+
+        {/* BLIND MODE BANNER */}
+        {isBlindMode && (
+          <div
+            data-testid="blind-mode-banner"
+            className="bg-amber-500 text-white px-6 py-2 text-xs font-semibold flex items-center justify-between shadow-sm animate-in fade-in-0 shrink-0"
+          >
+            <div className="flex items-center gap-2">
+              <Eye className="w-4 h-4 text-white shrink-0" />
+              <span>Blind mode on — Candidate names, colleges, and locations are masked to prevent unconscious bias.</span>
+            </div>
+            <button
+              onClick={toggleBlindMode}
+              className="text-[11px] underline hover:text-amber-100 font-bold ml-4 cursor-pointer"
+            >
+              Turn off
+            </button>
           </div>
         )}
 

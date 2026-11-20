@@ -6,10 +6,17 @@ import { ApiCandidateSchema, fromApiCandidate, toApiCandidate } from './mappers'
 
 // Environment Configurations
 export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
-export const USE_MOCK =
-  import.meta.env.VITE_USE_MOCK !== undefined
+export const getUseMock = (): boolean => {
+  if (typeof window !== 'undefined') {
+    const override = localStorage.getItem('hireswift_use_mock')
+    if (override !== null) return override === 'true'
+  }
+  return import.meta.env.VITE_USE_MOCK !== undefined
     ? import.meta.env.VITE_USE_MOCK === 'true'
     : import.meta.env.DEV
+}
+
+export const USE_MOCK = getUseMock()
 
 export class ApiError extends Error {
   constructor(
@@ -483,6 +490,16 @@ export const mockApi = {
     }
   },
 
+  getApplications: async (jobId?: string): Promise<Application[]> => {
+    await sleep(100)
+    const store = useAppStore.getState()
+    return store.applications.filter((a) => {
+      if (a.companyId !== store.currentCompanyId) return false
+      if (jobId && jobId !== 'all' && a.jobId !== jobId) return false
+      return true
+    })
+  },
+
   moveApplication: async (
     applicationId: string,
     newStage: string,
@@ -704,6 +721,30 @@ export const httpApi = {
     return SkillGapResponseSchema.parse(data)
   },
 
+  getApplications: async (jobId?: string): Promise<Application[]> => {
+    const url = jobId && jobId !== 'all'
+      ? `${API_BASE_URL}/applications?job_id=${encodeURIComponent(jobId)}`
+      : `${API_BASE_URL}/applications`
+    const res = await fetch(url)
+    if (!res.ok) throw new ApiError(res.status, 'Failed to fetch applications.')
+    const data = await res.json()
+    return (data || []).map((raw: any) => ({
+      id: raw.id,
+      companyId: raw.company_id || raw.companyId || 'company-nova',
+      jobId: raw.job_id || raw.jobId,
+      candidateId: raw.candidate_id || raw.candidateId,
+      stage: raw.stage || 'applied',
+      matchScore: raw.match_score ?? raw.matchScore ?? 75,
+      breakdown: raw.breakdown || { skills: 75, experience: 75, education: 75, semantic: 75 },
+      matchedSkills: raw.matched_skills || raw.matchedSkills || [],
+      missingSkills: raw.missing_skills || raw.missingSkills || [],
+      explanation: raw.explanation || '',
+      evidenceSnippets: raw.evidence_snippets || raw.evidenceSnippets || [],
+      notes: raw.notes || [],
+      createdAt: raw.created_at || raw.createdAt || new Date().toISOString(),
+    }))
+  },
+
   moveApplication: async (
     applicationId: string,
     newStage: string,
@@ -743,4 +784,15 @@ export const httpApi = {
 }
 
 // Default export uses Mock unless VITE_USE_MOCK=false
-export const api = USE_MOCK ? mockApi : httpApi
+export type HireSwiftApiClient = typeof httpApi
+
+export const api: HireSwiftApiClient = new Proxy({} as HireSwiftApiClient, {
+  get(_target, prop) {
+    const activeApi = getUseMock() ? mockApi : httpApi
+    const value = (activeApi as any)[prop]
+    if (typeof value === 'function') {
+      return value.bind(activeApi)
+    }
+    return value
+  },
+})

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
 import { api, BatchProgress, USE_MOCK } from '@/api'
@@ -40,7 +40,24 @@ export const UploadPage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { currentCompanyId, jobs, candidates, addCandidateWithApplication, resetSeedData } = useAppStore()
 
-  const companyJobs = jobs.filter((j) => j.companyId === currentCompanyId)
+  // In live mode, fetch target jobs from API
+  const [liveJobs, setLiveJobs] = useState<any[]>([])
+  useEffect(() => {
+    if (!USE_MOCK) {
+      api.getJobs()
+        .then((res) => {
+          setLiveJobs(res)
+          if (res.length > 0 && !selectedJobId) {
+            setSelectedJobId(res[0].id)
+          }
+        })
+        .catch(() => {})
+    }
+  }, [])
+
+  const companyJobs = USE_MOCK
+    ? jobs.filter((j) => j.companyId === currentCompanyId)
+    : (liveJobs.length > 0 ? liveJobs : jobs.filter((j) => j.companyId === currentCompanyId))
   const [selectedJobId, setSelectedJobId] = useState<string>(companyJobs[0]?.id || '')
 
   const [queue, setQueue] = useState<UploadItem[]>([])
@@ -101,8 +118,7 @@ export const UploadPage: React.FC = () => {
     })
 
     if (rejected.length > 0) {
-      setFailedFilesList((prev) => [...prev, ...rejected])
-      toast.warning(`${rejected.length} file(s) failed client-side validation.`)
+      toast.warning(`${rejected.length} file(s) failed client-side format/size validation.`)
     }
 
     setQueue((prev) => [...prev, ...newItems])
@@ -186,49 +202,50 @@ export const UploadPage: React.FC = () => {
           setProgressPercent(100)
           setIsBatchDone(true)
 
-          if (batchProgress.failed_files.length > 0) {
-            setFailedFilesList((prev) => [...prev, ...batchProgress.failed_files])
+          // Failed files come strictly from the API response
+          setFailedFilesList(batchProgress.failed_files || [])
+
+          // Ingest parsed profiles into store only when in mock mode
+          if (USE_MOCK) {
+            const sampleProfiles = [
+              { name: 'Ananya Iyer', college: 'IIT Delhi', cgpa: 8.9, skills: ['React', 'TypeScript', 'Node.js', 'Python'], conf: 94 },
+              { name: 'Rishabh Tiwari', college: 'NIT Trichy', cgpa: 8.2, skills: ['Python', 'Docker', 'FastAPI', 'PostgreSQL'], conf: 90 },
+              { name: 'Deepak Sharma', college: 'SRM Institute', cgpa: 6.8, skills: ['Java', 'Spring Boot', 'SQL'], conf: 62 },
+              { name: 'Kavya Nair', college: 'BITS Pilani', cgpa: 9.1, skills: ['React', 'Node.js', 'AWS', 'Docker'], conf: 96 },
+            ]
+
+            sampleProfiles.forEach((p, idx) => {
+              addCandidateWithApplication(
+                {
+                  companyId: currentCompanyId,
+                  name: p.name,
+                  email: `${p.name.toLowerCase().replace(' ', '.')}@example.in`,
+                  phone: `+91 98765 ${10000 + idx}`,
+                  location: 'Bengaluru',
+                  college: p.college,
+                  degree: 'B.Tech',
+                  branch: 'Computer Science',
+                  gradYear: 2024,
+                  tenthPercent: 88,
+                  twelfthPercent: 86,
+                  cgpa: p.cgpa,
+                  skills: p.skills,
+                  experienceYears: 1.5,
+                  experience: [],
+                  projects: [],
+                  certifications: [],
+                  resumeText: `Resume of ${p.name}. Skilled in ${p.skills.join(', ')}.`,
+                  resumeFileName: `${p.name.replace(' ', '_')}.pdf`,
+                  parseConfidence: p.conf,
+                  fieldConfidence: { cgpa: p.conf, skills: p.conf, experience: p.conf },
+                  source: 'Bulk Resume Upload',
+                  customFields: {},
+                },
+                selectedJobId,
+                'applied'
+              )
+            })
           }
-
-          // Ingest parsed profiles into store for the target job
-          const sampleProfiles = [
-            { name: 'Ananya Iyer', college: 'IIT Delhi', cgpa: 8.9, skills: ['React', 'TypeScript', 'Node.js', 'Python'], conf: 94 },
-            { name: 'Rishabh Tiwari', college: 'NIT Trichy', cgpa: 8.2, skills: ['Python', 'Docker', 'FastAPI', 'PostgreSQL'], conf: 90 },
-            { name: 'Deepak Sharma', college: 'SRM Institute', cgpa: 6.8, skills: ['Java', 'Spring Boot', 'SQL'], conf: 62 },
-            { name: 'Kavya Nair', college: 'BITS Pilani', cgpa: 9.1, skills: ['React', 'Node.js', 'AWS', 'Docker'], conf: 96 },
-          ]
-
-          sampleProfiles.forEach((p, idx) => {
-            addCandidateWithApplication(
-              {
-                companyId: currentCompanyId,
-                name: p.name,
-                email: `${p.name.toLowerCase().replace(' ', '.')}@example.in`,
-                phone: `+91 98765 ${10000 + idx}`,
-                location: 'Bengaluru',
-                college: p.college,
-                degree: 'B.Tech',
-                branch: 'Computer Science',
-                gradYear: 2024,
-                tenthPercent: 88,
-                twelfthPercent: 86,
-                cgpa: p.cgpa,
-                skills: p.skills,
-                experienceYears: 1.5,
-                experience: [],
-                projects: [],
-                certifications: [],
-                resumeText: `Resume of ${p.name}. Skilled in ${p.skills.join(', ')}.`,
-                resumeFileName: `${p.name.replace(' ', '_')}.pdf`,
-                parseConfidence: p.conf,
-                fieldConfidence: { cgpa: p.conf, skills: p.conf, experience: p.conf },
-                source: 'Bulk Resume Upload',
-                customFields: {},
-              },
-              selectedJobId,
-              'applied'
-            )
-          })
 
           setQueue((prev) =>
             prev.map((item) =>

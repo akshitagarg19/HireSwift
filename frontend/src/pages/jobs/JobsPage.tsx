@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
 import { api, USE_MOCK } from '@/api'
@@ -6,6 +6,7 @@ import { Job } from '@/types'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Badge } from '@/components/ui/Badge'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { toast } from 'sonner'
 import {
@@ -20,6 +21,7 @@ import {
   Pause,
   ExternalLink,
   ChevronRight,
+  AlertTriangle,
 } from 'lucide-react'
 
 export const JobsPage: React.FC = () => {
@@ -29,18 +31,32 @@ export const JobsPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Paused' | 'Closed'>('All')
   const [jobToDelete, setJobToDelete] = useState<string | null>(null)
 
-  // In live mode, fetch jobs from API
+  // In live mode, fetch jobs strictly from API with error/retry handling
   const [liveJobs, setLiveJobs] = useState<Job[]>([])
-  useEffect(() => {
-    if (!USE_MOCK) {
-      api.getJobs()
-        .then((res) => setLiveJobs(res))
-        .catch(() => {})
+  const [loading, setLoading] = useState(!USE_MOCK)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchJobs = useCallback(async () => {
+    if (USE_MOCK) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await api.getJobs()
+      setLiveJobs(res)
+    } catch (err: any) {
+      setError(err.message || 'Failed to retrieve jobs from backend.')
+    } finally {
+      setLoading(false)
     }
   }, [])
 
-  const allJobs = USE_MOCK ? jobs : (liveJobs.length > 0 ? liveJobs : jobs)
-  const companyJobs = allJobs.filter((j) => j.companyId === currentCompanyId || !USE_MOCK)
+  useEffect(() => {
+    fetchJobs()
+  }, [fetchJobs])
+
+  const companyJobs = USE_MOCK
+    ? jobs.filter((j) => j.companyId === currentCompanyId)
+    : liveJobs
 
   const filteredJobs = companyJobs.filter((job) => {
     const matchesSearch =
@@ -138,16 +154,39 @@ export const JobsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Error State with Retry */}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-rose-800 text-sm font-semibold">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchJobs}>
+            Retry
+          </Button>
+        </div>
+      )}
+
       {/* Jobs Grid / List */}
       <div className="space-y-3">
         {filteredJobs.length === 0 ? (
-          <div className="p-12 text-center bg-white rounded-xl border border-dashed border-border">
-            <Briefcase className="w-10 h-10 text-muted mx-auto mb-3" />
-            <h3 className="text-base font-semibold text-text">No job postings found</h3>
-            <p className="text-xs text-muted mt-1">
-              {search ? 'Try adjusting your search criteria.' : 'Create your first job posting to start receiving applicants.'}
-            </p>
-          </div>
+          <EmptyState
+            icon={<Briefcase className="w-6 h-6" />}
+            title="No job postings found"
+            description={search ? 'Try adjusting your search criteria.' : 'Create your first job posting to start receiving applicants.'}
+            action={
+              canEdit ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  leftIcon={<Plus className="w-4 h-4" />}
+                  onClick={() => navigate('/app/jobs/new')}
+                >
+                  Create New Job
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           filteredJobs.map((job) => {
             const metrics = getJobMetrics(job.id)

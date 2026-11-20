@@ -1,7 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
-import { api, ApiError } from '@/api'
+import { api, ApiError, USE_MOCK } from '@/api'
 import { isReadOnlyViewer } from '@/lib/permissions'
 import {
   DndContext,
@@ -21,8 +21,8 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { toast } from 'sonner'
-import { Search, Briefcase, ArrowRight, Mail } from 'lucide-react'
-import { Candidate, Application } from '@/types'
+import { Search, Briefcase, ArrowRight, Mail, AlertTriangle } from 'lucide-react'
+import { Candidate, Application, Job } from '@/types'
 
 // EXACTLY 5 PIPELINE COLUMNS PER PLAN
 export const PIPELINE_STAGES = [
@@ -42,7 +42,7 @@ interface KanbanCardProps {
 }
 
 const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick, onMoveTo }) => {
-  const { companies, currentCompanyId, currentUser } = useAppStore()
+  const { companies, currentCompanyId, currentUser, isBlindMode } = useAppStore()
   const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
   const isReadOnly = isReadOnlyViewer(currentUser?.role)
 
@@ -52,10 +52,9 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick
     disabled: isReadOnly,
   })
 
-  const displayName = company.settings.blindMode ? `Candidate #${candidate.id.slice(-4)}` : candidate.name
-  const displayCollege = company.settings.blindMode && company.settings.hiddenFields.includes('college')
-    ? '[Hidden College]'
-    : candidate.college
+  const displayName = isBlindMode ? `Candidate #${candidate.id}` : candidate.name
+  const displayCollege = isBlindMode ? '[Hidden College]' : candidate.college
+  const displayLocation = isBlindMode ? '[Hidden Location]' : candidate.location
 
   const daysInStage = Math.max(1, Math.floor((Date.now() - new Date(application.createdAt).getTime()) / 86400000))
 
@@ -70,12 +69,12 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick
     >
       <div className="flex items-start justify-between gap-2" onClick={onClick}>
         <div className="flex items-center gap-2 min-w-0">
-          <Avatar name={candidate.name} size="sm" isBlind={company.settings.blindMode} />
+          <Avatar name={candidate.name} size="sm" isBlind={isBlindMode} />
           <div className="min-w-0">
             <h4 className="text-xs font-bold text-text truncate hover:text-primary transition-colors">
               {displayName}
             </h4>
-            <p className="text-[11px] text-muted truncate">{displayCollege}</p>
+            <p className="text-[11px] text-muted truncate">{displayCollege} • {displayLocation}</p>
           </div>
         </div>
         <ScoreRing score={application.matchScore} size="sm" />
@@ -87,7 +86,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick
             {s}
           </span>
         ))}
-        {company.settings.customFields.length > 0 && candidate.customFields && (
+        {company.settings?.customFields && candidate.customFields && (
           company.settings.customFields.slice(0, 2).map((cf) => {
             const val = candidate.customFields?.[cf.id]
             if (val === undefined || val === '') return null
@@ -101,7 +100,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick
       </div>
 
       <div className="flex items-center justify-between text-[11px] text-muted pt-2 border-t border-gray-100">
-        <span>CGPA: <strong className="text-text">{candidate.cgpa}</strong></span>
+        <span>CGPA: <strong className="text-text">{candidate.cgpa ?? '-'}</strong></span>
         <span>{daysInStage}d in stage</span>
       </div>
 
@@ -208,9 +207,15 @@ export const PipelinePage: React.FC = () => {
     jobs,
     candidates,
     applications,
+    isBlindMode,
   } = useAppStore()
 
-  const companyJobs = jobs.filter((j) => j.companyId === currentCompanyId)
+  // Live state for !USE_MOCK
+  const [liveJobs, setLiveJobs] = useState<Job[]>([])
+  const [liveApplications, setLiveApplications] = useState<Application[]>([])
+  const [liveCandidates, setLiveCandidates] = useState<Candidate[]>([])
+  const [loading, setLoading] = useState(!USE_MOCK)
+  const [error, setError] = useState<string | null>(null)
 
   const [selectedJobId, setSelectedJobId] = useState<string>('all')
   const [search, setSearch] = useState('')
@@ -218,6 +223,35 @@ export const PipelinePage: React.FC = () => {
     application: Application
     candidate: Candidate
   } | null>(null)
+
+  // Fetch live applications & candidates
+  const fetchLivePipeline = useCallback(async () => {
+    if (USE_MOCK) return
+    setLoading(true)
+    setError(null)
+    try {
+      const [fetchedJobs, fetchedApps, fetchedCands] = await Promise.all([
+        api.getJobs(),
+        api.getApplications(selectedJobId !== 'all' ? selectedJobId : undefined),
+        api.getCandidates({ page_size: 100 }),
+      ])
+      setLiveJobs(fetchedJobs)
+      setLiveApplications(fetchedApps)
+      setLiveCandidates(fetchedCands.items)
+    } catch (err: any) {
+      setError(err.message || 'Failed to load recruitment pipeline.')
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedJobId])
+
+  useEffect(() => {
+    fetchLivePipeline()
+  }, [fetchLivePipeline])
+
+  const companyJobs = USE_MOCK
+    ? jobs.filter((j) => j.companyId === currentCompanyId)
+    : liveJobs
 
   // Configure sensors for drag sensitivity
   const sensors = useSensors(
@@ -228,22 +262,44 @@ export const PipelinePage: React.FC = () => {
     })
   )
 
-  // Filter applications for current company and selected job
-  const relevantApplications = applications.filter((app) => {
-    if (app.companyId !== currentCompanyId) return false
+  // Applications source
+  const currentApps = USE_MOCK ? applications : liveApplications
+  const relevantApplications = currentApps.filter((app) => {
+    if (USE_MOCK && app.companyId !== currentCompanyId) return false
     if (selectedJobId !== 'all' && app.jobId !== selectedJobId) return false
     return true
   })
 
-  const candidateMap = new Map(candidates.map((c) => [c.id, c]))
+  const currentCandidates = USE_MOCK ? candidates : liveCandidates
+  const candidateMap = new Map(currentCandidates.map((c) => [c.id, c]))
 
   const filteredItems = relevantApplications
     .map((app) => ({
       application: app,
-      candidate: candidateMap.get(app.candidateId)!,
+      candidate: candidateMap.get(app.candidateId) || {
+        id: app.candidateId,
+        companyId: app.companyId,
+        name: `Candidate #${app.candidateId}`,
+        email: '',
+        phone: '',
+        location: 'Unknown',
+        college: 'Unknown College',
+        degree: 'Degree',
+        branch: '',
+        skills: [],
+        experience: [],
+        projects: [],
+        certifications: [],
+        resumeText: '',
+        resumeFileName: '',
+        parseConfidence: 80,
+        fieldConfidence: {},
+        source: 'Application',
+        createdAt: app.createdAt,
+        customFields: {},
+      },
     }))
     .filter((item) => {
-      if (!item.candidate) return false
       if (!search.trim()) return true
       const q = search.toLowerCase()
       return (
@@ -253,17 +309,13 @@ export const PipelinePage: React.FC = () => {
       )
     })
 
-  const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
   // Exactly 5 Kanban columns per plan
-  const stagesToRender = PIPELINE_STAGES
-
-  // Map into pipeline columns
-  const columnData = stagesToRender.map((stage) => ({
+  const columnData = PIPELINE_STAGES.map((stage) => ({
     stage,
     applications: filteredItems.filter((item) => item.application.stage === stage.id),
   }))
 
-  // Execute transition via API with rollback on invalid transition
+  // Execute transition via API with snap-back on error
   const handleStageTransition = async (appId: string, currentStage: string, targetStage: string) => {
     if (currentStage === targetStage) return
 
@@ -271,9 +323,19 @@ export const PipelinePage: React.FC = () => {
       // Calls POST /applications/{id}/move per contract
       await api.moveApplication(appId, targetStage, 'Updated via Pipeline Kanban')
       toast.success(`Candidate advanced to ${targetStage.toUpperCase()}`)
+      // Persist by refetching after each move
+      if (!USE_MOCK) {
+        const updated = await api.getApplications(selectedJobId !== 'all' ? selectedJobId : undefined)
+        setLiveApplications(updated)
+      }
     } catch (err: any) {
-      // On invalid transition: snap back and show server message
-      toast.error(err.message || 'Invalid stage transition.')
+      // On invalid transition (400): snap card back and show server detail
+      toast.error(err.detail || err.message || 'Invalid stage transition.')
+      // Refetch to ensure card position snaps back to server state
+      if (!USE_MOCK) {
+        const synced = await api.getApplications(selectedJobId !== 'all' ? selectedJobId : undefined)
+        setLiveApplications(synced)
+      }
     }
   }
 
@@ -340,6 +402,18 @@ export const PipelinePage: React.FC = () => {
         </div>
       </div>
 
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-rose-800 text-sm font-semibold">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchLivePipeline}>
+            Retry
+          </Button>
+        </div>
+      )}
+
       {/* 5-Column Kanban Board */}
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="flex gap-4 overflow-x-auto pb-4 pt-1">
@@ -359,10 +433,14 @@ export const PipelinePage: React.FC = () => {
           {activeDragItem ? (
             <div className="bg-white rounded-xl border-2 border-primary p-3.5 shadow-modal w-72 space-y-2 opacity-95 pointer-events-none rotate-1">
               <div className="flex items-center gap-2">
-                <Avatar name={activeDragItem.candidate.name} size="sm" />
+                <Avatar name={activeDragItem.candidate.name} size="sm" isBlind={isBlindMode} />
                 <div>
-                  <h4 className="text-xs font-bold text-text">{activeDragItem.candidate.name}</h4>
-                  <p className="text-[11px] text-muted">{activeDragItem.candidate.college}</p>
+                  <h4 className="text-xs font-bold text-text">
+                    {isBlindMode ? `Candidate #${activeDragItem.candidate.id}` : activeDragItem.candidate.name}
+                  </h4>
+                  <p className="text-[11px] text-muted">
+                    {isBlindMode ? '[Hidden College]' : activeDragItem.candidate.college}
+                  </p>
                 </div>
               </div>
               <div className="text-[11px] text-muted">

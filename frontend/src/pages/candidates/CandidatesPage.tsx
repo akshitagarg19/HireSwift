@@ -54,6 +54,7 @@ export const CandidatesPage: React.FC = () => {
     companies,
     duplicateGroups,
     bulkUpdateApplicationStage,
+    isBlindMode,
   } = useAppStore()
 
   const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
@@ -1205,12 +1206,12 @@ export const CandidatesPage: React.FC = () => {
                               <Avatar
                                 name={candidate.name}
                                 size="sm"
-                                isBlind={company.settings.blindMode}
+                                isBlind={isBlindMode}
                               />
                               <div>
                                 <div className="flex items-center gap-1.5">
                                   <span className="font-bold text-text text-xs hover:text-primary">
-                                    {company.settings.blindMode ? 'Candidate #' + candidate.id.slice(-4) : candidate.name}
+                                    {isBlindMode ? `Candidate #${candidate.id}` : candidate.name}
                                   </span>
                                   {/* Duplicate Badge */}
                                   {isDuplicate && (
@@ -1226,7 +1227,7 @@ export const CandidatesPage: React.FC = () => {
                                   )}
                                 </div>
                                 <div className="text-[11px] text-muted truncate max-w-[170px]">
-                                  {company.settings.blindMode
+                                  {isBlindMode
                                     ? '[Hidden College]'
                                     : candidate.college}
                                 </div>
@@ -1286,8 +1287,8 @@ export const CandidatesPage: React.FC = () => {
 
                           {/* Location */}
                           <td className="p-3 text-muted">
-                            {company.settings.blindMode && company.settings.hiddenFields.includes('location')
-                              ? '[Hidden]'
+                            {isBlindMode
+                              ? '[Hidden Location]'
                               : candidate.location}
                           </td>
 
@@ -1507,11 +1508,11 @@ export const CandidatesPage: React.FC = () => {
               <div className="space-y-6">
                 {/* Header Profile Card */}
                 <div className="flex items-start gap-4 p-4 rounded-xl border border-border bg-gray-50/50">
-                  <Avatar name={drawerCandidate.name} size="lg" isBlind={company.settings.blindMode} />
+                  <Avatar name={drawerCandidate.name} size="lg" isBlind={isBlindMode} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h2 className="text-base font-bold text-text truncate">
-                        {company.settings.blindMode ? 'Candidate #' + drawerCandidate.id.slice(-4) : drawerCandidate.name}
+                        {isBlindMode ? 'Candidate #' + drawerCandidate.id : drawerCandidate.name}
                       </h2>
                       {duplicateCandidateIds.has(drawerCandidate.id) && (
                         <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
@@ -1520,12 +1521,12 @@ export const CandidatesPage: React.FC = () => {
                       )}
                     </div>
                     <p className="text-xs text-muted mt-0.5">
-                      {company.settings.blindMode ? '[Hidden College]' : drawerCandidate.college} • {drawerCandidate.degree}
+                      {isBlindMode ? '[Hidden College]' : drawerCandidate.college} • {drawerCandidate.degree}
                     </p>
                     <div className="flex items-center gap-3 text-xs text-muted mt-2 flex-wrap">
-                      <span>📍 {drawerCandidate.location}</span>
-                      <span>✉️ {company.settings.blindMode ? '[Hidden Email]' : drawerCandidate.email}</span>
-                      <span>📞 {company.settings.blindMode ? '[Hidden Phone]' : drawerCandidate.phone}</span>
+                      <span>📍 {isBlindMode ? '[Hidden Location]' : drawerCandidate.location}</span>
+                      <span>✉️ {isBlindMode ? '[Hidden Email]' : drawerCandidate.email}</span>
+                      <span>📞 {isBlindMode ? '[Hidden Phone]' : drawerCandidate.phone}</span>
                     </div>
                   </div>
                 </div>

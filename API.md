@@ -8,6 +8,19 @@
 
 ---
 
+## ⚠️ CHANGES FOR AKSHITA (Backend Alignment Checklist)
+1. **`GET /jobs/{id}/ranking` item `application_id`**:
+   - Each item in the `candidates` array must include `application_id: string` so the Kanban and detail views can advance or track the candidate's active application record.
+2. **`GET /applications` Endpoint**:
+   - Add endpoint `GET /applications` accepting optional query parameter `?job_id=string`.
+   - Returns a list of applications: `[{ id, job_id, candidate_id, stage, match_score, created_at }]`.
+3. **`duplicate_group_id` in `GET /candidates`**:
+   - Candidate records should include optional `duplicate_group_id: string | null` alongside `is_duplicate: bool` so duplicate clusters can be grouped directly from backend deduplication signals.
+4. **`POST /resumes/bulk` Ingestion Behavior**:
+   - Ingesting resumes must create both candidate records and initial application records in stage `applied` (linked to the target job or general talent pool) once parsing completes.
+
+---
+
 ## 1. System Health
 
 ### `GET /health`
@@ -27,7 +40,7 @@ Returns the status of the FastAPI backend and database connectivity.
 ## 2. Resumes & Ingestion
 
 ### `POST /resumes/bulk`
-Upload one or multiple resumes for background parsing and vector indexing.
+Upload one or multiple resumes for background parsing and vector indexing. Ingestion automatically creates candidate profiles and initial application records in `applied` stage upon completion.
 
 - **Content-Type:** `multipart/form-data`
 - **Body:** `files`: List of files (`.pdf`, `.docx`, max 10MB each)
@@ -115,7 +128,8 @@ Query and filter candidates across the indexed talent pool.
         "cf-ctc": "14 LPA",
         "cf-notice": "15 Days"
       },
-      "is_duplicate": false
+      "is_duplicate": false,
+      "duplicate_group_id": "dup-grp-101"
     }
   ],
   "total": 45,
@@ -153,6 +167,7 @@ Get ranked candidates scored specifically against this job's competencies and JD
   "candidates": [
     {
       "candidate_id": "cand-001",
+      "application_id": "app-001",
       "name": "Aarav Sharma",
       "college": "IIT Delhi",
       "match_score": 91,
@@ -188,6 +203,28 @@ Analytics on skill availability in the applicant pool vs JD requirements.
 ---
 
 ## 5. Applications & Pipeline Transitions
+
+### `GET /applications`
+List recruitment applications across all jobs or filter by specific job.
+
+**Query Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `job_id` | string | (Optional) Filter applications by target job identifier |
+
+**Response:** `200 OK`
+```json
+[
+  {
+    "id": "app-001",
+    "job_id": "job-101",
+    "candidate_id": "cand-001",
+    "stage": "applied",
+    "match_score": 91,
+    "created_at": "2026-11-20T10:00:00Z"
+  }
+]
+```
 
 ### `POST /applications/{id}/move`
 Advance or move an applicant along the Kanban pipeline.

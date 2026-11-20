@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useAppStore } from '@/store'
 import { api, USE_MOCK } from '@/api'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { Avatar } from '@/components/ui/Avatar'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { toast } from 'sonner'
 import {
   Copy,
@@ -27,6 +28,7 @@ export const DuplicatesPage: React.FC = () => {
     mergeDuplicates,
     dismissDuplicate,
     keepBothDuplicates,
+    isBlindMode,
   } = useAppStore()
 
   const [activeTab, setActiveTab] = useState<'Pending' | 'Resolved'>('Pending')
@@ -35,18 +37,32 @@ export const DuplicatesPage: React.FC = () => {
   const [primaryCandId, setPrimaryCandId] = useState<string>('')
   const [isScanning, setIsScanning] = useState(false)
 
-  // In live mode, fetch candidate directory from API
+  // In live mode, fetch candidate directory strictly from API (no store fallback)
   const [apiCandidates, setApiCandidates] = useState<Candidate[]>([])
-  useEffect(() => {
-    if (!USE_MOCK) {
-      api.getCandidates({ page_size: 100 })
-        .then((res) => setApiCandidates(res.items))
-        .catch(() => {})
+  const [loading, setLoading] = useState(!USE_MOCK)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchCandidates = useCallback(async () => {
+    if (USE_MOCK) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await api.getCandidates({ page_size: 100 })
+      setApiCandidates(res.items)
+    } catch (err: any) {
+      setError(err.message || 'Failed to retrieve candidates for duplicate detection.')
+    } finally {
+      setLoading(false)
     }
   }, [])
 
-  const allCandidates = USE_MOCK ? candidates : (apiCandidates.length > 0 ? apiCandidates : candidates)
-  const companyCandidates = allCandidates.filter((c) => c.companyId === currentCompanyId || !USE_MOCK)
+  useEffect(() => {
+    fetchCandidates()
+  }, [fetchCandidates])
+
+  const companyCandidates = USE_MOCK
+    ? candidates.filter((c) => c.companyId === currentCompanyId)
+    : apiCandidates
   const candidateMap = new Map(companyCandidates.map((c) => [c.id, c]))
 
   // Group by API is_duplicate, group_id, or client-side shared email/phone
@@ -289,16 +305,27 @@ export const DuplicatesPage: React.FC = () => {
         </button>
       </div>
 
+      {/* Error state with Retry */}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-rose-800 text-sm font-semibold">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchCandidates}>
+            Retry
+          </Button>
+        </div>
+      )}
+
       {/* Duplicate Cards */}
       <div className="space-y-4">
         {displayedGroups.length === 0 ? (
-          <div className="p-12 text-center bg-white rounded-xl border border-dashed border-border">
-            <CheckCircle className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-            <h3 className="text-base font-bold text-text">No duplicate conflicts</h3>
-            <p className="text-xs text-muted mt-1">
-              Your talent pool records are cleanly separated and indexed.
-            </p>
-          </div>
+          <EmptyState
+            icon={<CheckCircle className="w-8 h-8 text-emerald-500" />}
+            title="No duplicate conflicts"
+            description="Your talent pool records are cleanly separated and indexed."
+          />
         ) : (
           displayedGroups.map((group) => {
             const candA = candidateMap.get(group.candidateIds[0])

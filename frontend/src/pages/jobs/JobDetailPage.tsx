@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
-import { api } from '@/api'
+import { api, USE_MOCK } from '@/api'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { ScoreRing } from '@/components/ui/ScoreRing'
@@ -27,6 +27,7 @@ import {
   X,
 } from 'lucide-react'
 import { JobRankingCandidate, SkillGapItem } from '@/api'
+import { Job } from '@/types'
 import {
   BarChart,
   Bar,
@@ -48,10 +49,53 @@ export const JobDetailPage: React.FC = () => {
     rematchTalentPool,
     updateApplicationStage,
     updateJob,
+    isBlindMode,
   } = useAppStore()
 
-  const job = jobs.find((j) => j.id === id)
+  const storeJob = jobs.find((j) => j.id === id)
+  const [liveJob, setLiveJob] = useState<Job | null>(null)
+  const [loading, setLoading] = useState(!USE_MOCK)
+  const [error, setError] = useState<string | null>(null)
+
   const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
+
+  // Live rankings from API
+  const [rankingData, setRankingData] = useState<JobRankingCandidate[]>([])
+  const [skillGapData, setSkillGapData] = useState<SkillGapItem[]>([])
+
+  const fetchJobData = useCallback(async () => {
+    if (!id) return
+    if (USE_MOCK) {
+      if (storeJob) {
+        api.getJobRanking(storeJob.id).then((res) => setRankingData(res.candidates))
+        api.getJobSkillGap(storeJob.id).then((res) => setSkillGapData(res.skills))
+      }
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+    try {
+      const [fetchedJob, rankingRes, skillGapRes] = await Promise.all([
+        api.getJob(id),
+        api.getJobRanking(id),
+        api.getJobSkillGap(id),
+      ])
+      setLiveJob(fetchedJob)
+      setRankingData(rankingRes.candidates)
+      setSkillGapData(skillGapRes.skills)
+    } catch (err: any) {
+      setError(err.message || 'Failed to load job details and rankings.')
+    } finally {
+      setLoading(false)
+    }
+  }, [id, storeJob])
+
+  useEffect(() => {
+    fetchJobData()
+  }, [fetchJobData])
+
+  const job = USE_MOCK ? storeJob : liveJob
 
   // Local weights state for live slider adjustments
   const [weights, setWeights] = useState({
@@ -67,32 +111,39 @@ export const JobDetailPage: React.FC = () => {
 
   // Editable requirements state
   const [isEditingReqs, setIsEditingReqs] = useState(false)
-  const [editReqSkills, setEditReqSkills] = useState<string[]>(job?.requirements.requiredSkills || [])
-  const [editPrefSkills, setEditPrefSkills] = useState<string[]>(job?.requirements.preferredSkills || [])
-  const [editMinExp, setEditMinExp] = useState(job?.requirements.minExperience || 2)
-  const [editMinCgpa, setEditMinCgpa] = useState(job?.requirements.minCgpa || 7.0)
+  const [editReqSkills, setEditReqSkills] = useState<string[]>(job?.requirements?.requiredSkills || [])
+  const [editPrefSkills, setEditPrefSkills] = useState<string[]>(job?.requirements?.preferredSkills || [])
+  const [editMinExp, setEditMinExp] = useState(job?.requirements?.minExperience || 2)
+  const [editMinCgpa, setEditMinCgpa] = useState(job?.requirements?.minCgpa || 7.0)
   const [editLocation, setEditLocation] = useState(job?.location || 'Bengaluru')
 
   // Expanded candidate breakdown popover ID
   const [expandedBreakdownId, setExpandedBreakdownId] = useState<string | null>(null)
 
-  // Live rankings from API
-  const [rankingData, setRankingData] = useState<JobRankingCandidate[]>([])
-  const [skillGapData, setSkillGapData] = useState<SkillGapItem[]>([])
-
-  useEffect(() => {
-    if (!job) return
-    api.getJobRanking(job.id).then((res) => setRankingData(res.candidates))
-    api.getJobSkillGap(job.id).then((res) => setSkillGapData(res.skills))
-  }, [job, applications])
-
-  if (!job) {
+  if (loading) {
     return (
-      <div className="p-8 text-center bg-white rounded-xl border border-border">
-        <h2 className="text-lg font-bold text-text">Job Not Found</h2>
-        <Button variant="outline" className="mt-4" onClick={() => navigate('/app/jobs')}>
-          Back to Jobs
-        </Button>
+      <div className="p-12 text-center bg-white rounded-xl border border-border">
+        <RefreshCw className="w-8 h-8 text-primary animate-spin mx-auto mb-2" />
+        <p className="text-sm text-muted">Loading job details and rankings...</p>
+      </div>
+    )
+  }
+
+  if (error || !job) {
+    return (
+      <div className="p-8 text-center bg-white rounded-xl border border-border space-y-4">
+        <h2 className="text-lg font-bold text-text">{error ? 'Error Loading Job' : 'Job Not Found'}</h2>
+        {error && <p className="text-xs text-rose-600">{error}</p>}
+        <div className="flex items-center justify-center gap-3">
+          {error && (
+            <Button variant="primary" size="sm" onClick={fetchJobData}>
+              Retry
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => navigate('/app/jobs')}>
+            Back to Jobs
+          </Button>
+        </div>
       </div>
     )
   }
@@ -314,27 +365,32 @@ export const JobDetailPage: React.FC = () => {
             rankingData.map((item, rank) => {
               const { candidate, application_id, match_score, breakdown, matched_skills, missing_skills, explanation, stage } = item
               const isExpanded = expandedBreakdownId === application_id
-              const totalReqSkills = job.requirements.requiredSkills.length
+              const totalReqSkills = job.requirements?.requiredSkills?.length || 0
+              const candName = candidate?.name || 'Candidate'
+              const candId = candidate?.id || item.candidate_id || application_id
+              const displayName = isBlindMode ? `Candidate #${candId}` : candName
+              const displayCollege = isBlindMode ? '[Hidden College]' : (candidate?.college || 'College')
+              const displayLocation = isBlindMode ? '[Hidden Location]' : (candidate?.location || 'India')
 
               return (
                 <div
-                  key={application_id}
+                  key={application_id || item.candidate_id}
                   className="bg-card border border-border hover:border-indigo-200 rounded-xl p-4 shadow-card transition-all space-y-3"
                 >
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     {/* Left candidate info */}
                     <div
                       className="flex items-center gap-3.5 flex-1 min-w-0 cursor-pointer"
-                      onClick={() => navigate(`/app/candidates/${candidate.id}`)}
+                      onClick={() => navigate(`/app/candidates/${candId}`)}
                     >
                       <div className="w-6 text-center text-xs font-bold text-muted">
                         #{rank + 1}
                       </div>
-                      <Avatar name={candidate.name} size="md" isBlind={company.settings.blindMode} />
+                      <Avatar name={candName} size="md" isBlind={isBlindMode} />
                       <div className="space-y-1 flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-text text-sm hover:text-primary transition-colors">
-                            {company.settings.blindMode ? 'Candidate ' + candidate.id.slice(-4) : candidate.name}
+                            {displayName}
                           </span>
                           <Badge variant="outline" size="sm">
                             {stage}
@@ -342,13 +398,13 @@ export const JobDetailPage: React.FC = () => {
                         </div>
 
                         <div className="flex items-center gap-3 text-xs text-muted">
-                          <span>{candidate.college}</span>
+                          <span>{displayCollege}</span>
                           <span>•</span>
-                          <span>CGPA: <strong className="text-text">{candidate.cgpa}</strong></span>
+                          <span>CGPA: <strong className="text-text">{candidate?.cgpa ?? '-'}</strong></span>
                           <span>•</span>
-                          <span>{candidate.experienceYears}y exp</span>
+                          <span>{candidate?.experienceYears ?? 0}y exp</span>
                           <span>•</span>
-                          <span>{candidate.location}</span>
+                          <span>{displayLocation}</span>
                         </div>
 
                         <p className="text-xs text-muted italic line-clamp-1">
@@ -579,7 +635,7 @@ export const JobDetailPage: React.FC = () => {
                     <div>
                       <div className="text-xs font-bold text-muted mb-1">Required Skills</div>
                       <div className="flex flex-wrap gap-1">
-                        {job.requirements.requiredSkills.map((s) => (
+                        {(job.requirements.requiredSkills || []).map((s: string) => (
                           <SkillChip key={s} name={s} status="required" />
                         ))}
                       </div>
@@ -587,7 +643,7 @@ export const JobDetailPage: React.FC = () => {
                     <div>
                       <div className="text-xs font-bold text-muted mb-1">Preferred Skills</div>
                       <div className="flex flex-wrap gap-1">
-                        {job.requirements.preferredSkills.map((s) => (
+                        {(job.requirements.preferredSkills || []).map((s: string) => (
                           <SkillChip key={s} name={s} status="preferred" />
                         ))}
                       </div>

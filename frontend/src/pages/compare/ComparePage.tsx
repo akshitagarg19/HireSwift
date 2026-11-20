@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
 import { api, USE_MOCK, CompareCandidateItem } from '@/api'
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { ScoreRing } from '@/components/ui/ScoreRing'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { toast } from 'sonner'
 import {
   Scale,
@@ -18,21 +19,31 @@ import {
   Check,
   X,
   Briefcase,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react'
-import { Candidate } from '@/types'
+import { Candidate, Job } from '@/types'
 
 export const ComparePage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { currentCompanyId, candidates, jobs, companies, updateApplicationStage, applications } = useAppStore()
+  const { currentCompanyId, candidates, jobs, companies, updateApplicationStage, applications, isBlindMode } = useAppStore()
 
   const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
-  const companyJobs = jobs.filter((j) => j.companyId === currentCompanyId)
-  const companyCandidates = candidates.filter((c) => c.companyId === currentCompanyId)
+
+  // Live state
+  const [liveJobs, setLiveJobs] = useState<Job[]>([])
+  const [liveCandidates, setLiveCandidates] = useState<Candidate[]>([])
+  const [apiComparison, setApiComparison] = useState<CompareCandidateItem[]>([])
+  const [loading, setLoading] = useState(!USE_MOCK)
+  const [error, setError] = useState<string | null>(null)
+
+  const companyJobs = USE_MOCK
+    ? jobs.filter((j) => j.companyId === currentCompanyId)
+    : liveJobs
 
   // Target job
-  const [selectedJobId, setSelectedJobId] = useState<string>(companyJobs[0]?.id || '')
-  const activeJob = companyJobs.find((j) => j.id === selectedJobId)
+  const [selectedJobId, setSelectedJobId] = useState<string>('')
 
   // Selected candidate IDs: strictly 2 to 3 candidates per plan!
   const initialIds = (searchParams.get('candidateIds') || searchParams.get('ids') || '').split(',').filter(Boolean)
@@ -40,48 +51,117 @@ export const ComparePage: React.FC = () => {
     if (initialIds.length >= 2) {
       return initialIds.slice(0, 3)
     }
-    return [companyCandidates[0]?.id, companyCandidates[1]?.id].filter(Boolean)
+    return []
   })
+
+  // Load jobs and candidates in live mode
+  useEffect(() => {
+    if (!USE_MOCK) {
+      Promise.all([api.getJobs(), api.getCandidates({ page_size: 100 })])
+        .then(([jList, cList]) => {
+          setLiveJobs(jList)
+          setLiveCandidates(cList.items)
+          if (jList.length > 0 && !selectedJobId) {
+            setSelectedJobId(jList[0].id)
+          }
+          if (selectedIds.length < 2 && cList.items.length >= 2) {
+            setSelectedIds([cList.items[0].id, cList.items[1].id])
+          }
+        })
+        .catch((err: any) => {
+          setError(err.message || 'Failed to initialize comparison data.')
+        })
+    } else {
+      const cCands = candidates.filter((c) => c.companyId === currentCompanyId)
+      if (selectedIds.length < 2 && cCands.length >= 2) {
+        setSelectedIds([cCands[0].id, cCands[1].id])
+      }
+      const cJobs = jobs.filter((j) => j.companyId === currentCompanyId)
+      if (cJobs.length > 0 && !selectedJobId) {
+        setSelectedJobId(cJobs[0].id)
+      }
+    }
+  }, [USE_MOCK])
+
+  // Fetch comparison from API in live mode
+  const fetchComparison = useCallback(async () => {
+    if (USE_MOCK) return
+    if (selectedIds.length < 2) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await api.compareCandidates(selectedIds, selectedJobId || undefined)
+      setApiComparison(res.candidates)
+    } catch (err: any) {
+      setError(err.message || 'Failed to compare candidates.')
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedIds, selectedJobId])
+
+  useEffect(() => {
+    fetchComparison()
+  }, [fetchComparison])
+
+  const companyCandidates = USE_MOCK
+    ? candidates.filter((c) => c.companyId === currentCompanyId)
+    : liveCandidates
+
+  const activeJob = companyJobs.find((j) => j.id === selectedJobId)
 
   // Keep URL in sync
   useEffect(() => {
-    setSearchParams({ candidateIds: selectedIds.join(',') }, { replace: true })
+    if (selectedIds.length > 0) {
+      setSearchParams({ candidateIds: selectedIds.join(',') }, { replace: true })
+    }
   }, [selectedIds, setSearchParams])
 
-  const selectedCandidates = selectedIds
-    .map((id) => companyCandidates.find((c) => c.id === id))
-    .filter((c): c is Candidate => Boolean(c))
+  const selectedCandidates = USE_MOCK
+    ? selectedIds
+        .map((id) => companyCandidates.find((c) => c.id === id))
+        .filter((c): c is Candidate => Boolean(c))
+    : apiComparison.map((item) => item.candidate)
 
-  // Compute comparisons via API / store
-  const evaluatedComparisons = selectedCandidates.map((cand) => {
-    const existingApp = applications.find((a) => a.jobId === selectedJobId && a.candidateId === cand.id)
-    const weights = activeJob?.scoringWeights || company.settings.scoringWeights
-    const match = activeJob
-      ? {
-          score: existingApp?.matchScore || 78,
-          breakdown: existingApp?.breakdown || { skills: 80, experience: 75, education: 80, semantic: 75 },
-          matchedSkills: existingApp?.matchedSkills || cand.skills.slice(0, 3),
-          missingSkills: existingApp?.missingSkills || [],
-          explanation: existingApp?.explanation || 'Competency evaluated.',
-        }
-      : {
-          score: 70,
-          breakdown: { skills: 70, experience: 70, education: 70, semantic: 70 },
-          matchedSkills: cand.skills.slice(0, 3),
-          missingSkills: [],
-          explanation: '',
-        }
+  // Compute comparisons via API in live mode, or store in mock mode
+  const evaluatedComparisons = USE_MOCK
+    ? selectedCandidates.map((cand) => {
+        const existingApp = applications.find((a) => a.jobId === selectedJobId && a.candidateId === cand.id)
+        const weights = activeJob?.scoringWeights || company.settings.scoringWeights
+        const match = activeJob
+          ? {
+              score: existingApp?.matchScore || 78,
+              breakdown: existingApp?.breakdown || { skills: 80, experience: 75, education: 80, semantic: 75 },
+              matchedSkills: existingApp?.matchedSkills || cand.skills.slice(0, 3),
+              missingSkills: existingApp?.missingSkills || [],
+              explanation: existingApp?.explanation || 'Competency evaluated.',
+            }
+          : {
+              score: 70,
+              breakdown: { skills: 70, experience: 70, education: 70, semantic: 70 },
+              matchedSkills: cand.skills.slice(0, 3),
+              missingSkills: [],
+              explanation: '',
+            }
 
-    return {
-      candidate: cand,
-      score: existingApp ? existingApp.matchScore : match.score,
-      breakdown: match.breakdown,
-      matchedSkills: match.matchedSkills,
-      missingSkills: match.missingSkills,
-      explanation: match.explanation,
-      appId: existingApp?.id,
-    }
-  })
+        return {
+          candidate: cand,
+          score: existingApp ? existingApp.matchScore : match.score,
+          breakdown: match.breakdown,
+          matchedSkills: match.matchedSkills,
+          missingSkills: match.missingSkills,
+          explanation: match.explanation,
+          appId: existingApp?.id,
+        }
+      })
+    : apiComparison.map((item) => ({
+        candidate: item.candidate,
+        score: item.match_score,
+        breakdown: item.breakdown,
+        matchedSkills: item.matched_skills,
+        missingSkills: item.missing_skills,
+        explanation: 'Assessed against JD requirements',
+        appId: undefined,
+      }))
 
   // Find best value per metric for highlighting best in each row
   const highestScore = Math.max(...evaluatedComparisons.map((c) => c.score), 0)
@@ -187,6 +267,19 @@ export const ComparePage: React.FC = () => {
         </div>
       </div>
 
+      {/* Error state with Retry */}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-rose-800 text-sm font-semibold">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={fetchComparison}>
+            Retry
+          </Button>
+        </div>
+      )}
+
       {/* Top AI Decision Card */}
       {topPick && (
         <div className="bg-gradient-to-r from-indigo-50/90 via-purple-50/50 to-white rounded-xl border border-indigo-100 p-4 shadow-soft flex items-center justify-between gap-4">
@@ -202,7 +295,7 @@ export const ComparePage: React.FC = () => {
                 <Badge variant="default" size="sm">Top Fit ({topPick.score}%)</Badge>
               </div>
               <h3 className="text-base font-extrabold text-text mt-0.5">
-                {company.settings.blindMode ? 'Candidate ' + topPick.candidate.id.slice(-4) : topPick.candidate.name}
+                {isBlindMode ? 'Candidate #' + topPick.candidate.id : topPick.candidate.name}
               </h3>
               <p className="text-xs text-muted">{topPick.explanation}</p>
             </div>
@@ -214,50 +307,59 @@ export const ComparePage: React.FC = () => {
             leftIcon={<CheckCircle className="w-4 h-4" />}
             onClick={() => handleShortlistCandidate(topPick.appId, topPick.candidate.name)}
           >
-            Shortlist {company.settings.blindMode ? 'Top Pick' : topPick.candidate.name.split(' ')[0]}
+            Shortlist {isBlindMode ? 'Top Pick' : topPick.candidate.name.split(' ')[0]}
           </Button>
         </div>
       )}
 
       {/* Side-by-Side Dimensional Comparison Matrix */}
-      <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
-        <div className="p-4 border-b border-border bg-gray-50/50">
-          <h3 className="text-sm font-bold text-text">Criteria & Fit Breakdown</h3>
-          <p className="text-xs text-muted">Direct side-by-side comparison. Green badge highlights the top-ranking value in each dimension.</p>
-        </div>
+      {evaluatedComparisons.length === 0 ? (
+        <EmptyState
+          icon={<Scale className="w-8 h-8 text-primary" />}
+          title="No candidates selected for comparison"
+          description="Select 2 to 3 candidates from your talent pool to evaluate them head-to-head."
+        />
+      ) : (
+        <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
+          <div className="p-4 border-b border-border bg-gray-50/50">
+            <h3 className="text-sm font-bold text-text">Criteria & Fit Breakdown</h3>
+            <p className="text-xs text-muted">Direct side-by-side comparison. Green badge highlights the top-ranking value in each dimension.</p>
+          </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-border bg-gray-50/30">
-                <th className="p-4 w-48 font-semibold text-muted">Evaluation Dimension</th>
-                {evaluatedComparisons.map(({ candidate, appId }) => (
-                  <th key={candidate.id} className="p-4 min-w-[240px]">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar name={candidate.name} size="sm" isBlind={company.settings.blindMode} />
-                        <div>
-                          <div className="font-bold text-text text-sm">
-                            {company.settings.blindMode ? 'Candidate ' + candidate.id.slice(-4) : candidate.name}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-border bg-gray-50/30">
+                  <th className="p-4 w-48 font-semibold text-muted">Evaluation Dimension</th>
+                  {evaluatedComparisons.map(({ candidate, appId }) => (
+                    <th key={candidate.id} className="p-4 min-w-[240px]">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar name={candidate.name} size="sm" isBlind={isBlindMode} />
+                          <div>
+                            <div className="font-bold text-text text-sm">
+                              {isBlindMode ? 'Candidate #' + candidate.id : candidate.name}
+                            </div>
+                            <div className="text-[11px] text-muted">
+                              {isBlindMode ? '[Hidden Location]' : candidate.location}
+                            </div>
                           </div>
-                          <div className="text-[11px] text-muted">{candidate.location}</div>
                         </div>
-                      </div>
 
-                      {selectedIds.length > 2 && (
-                        <button
-                          onClick={() => handleRemoveCandidate(candidate.id)}
-                          className="p-1 text-muted hover:text-rose-600 rounded transition-colors"
-                          title="Remove from comparison"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
+                        {selectedIds.length > 2 && (
+                          <button
+                            onClick={() => handleRemoveCandidate(candidate.id)}
+                            className="p-1 text-muted hover:text-rose-600 rounded transition-colors"
+                            title="Remove from comparison"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
 
             <tbody className="divide-y divide-border">
               {/* Row 1: Match Score (Highlighted) */}
@@ -296,7 +398,9 @@ export const ComparePage: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <div className="text-[11px] text-muted mt-0.5">{cand.college} ({cand.degree})</div>
+                      <div className="text-[11px] text-muted mt-0.5">
+                        {isBlindMode ? '[Hidden College]' : `${cand.college} (${cand.degree})`}
+                      </div>
                     </td>
                   )
                 })}
@@ -411,6 +515,7 @@ export const ComparePage: React.FC = () => {
           </table>
         </div>
       </div>
+      )}
     </div>
   )
 }

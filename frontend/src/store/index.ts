@@ -26,14 +26,33 @@ import {
 } from '@/data/seedData'
 import { matchScore } from '@/lib/scoring'
 
-const initialSeed = generateSeedCandidatesAndApplications()
+const isMockMode =
+  typeof window !== 'undefined' && localStorage.getItem('hireswift_use_mock') !== null
+    ? localStorage.getItem('hireswift_use_mock') === 'true'
+    : typeof import.meta !== 'undefined' && import.meta.env
+    ? import.meta.env.VITE_USE_MOCK !== undefined
+      ? import.meta.env.VITE_USE_MOCK === 'true'
+      : import.meta.env.DEV
+    : true
+
+const initialSeed = isMockMode ? generateSeedCandidatesAndApplications() : {
+  candidates: [],
+  applications: [],
+  stageHistories: [],
+  duplicateGroups: [],
+}
 
 export interface AppStore {
+  // Global UI State
+  isBlindMode: boolean;
+  setBlindMode: (enabled: boolean) => void;
+  toggleBlindMode: () => void;
+
   // Current session
   currentCompanyId: string;
   currentUser: User | null;
 
-  // Entities
+  // Entities (In live mode, Zustand holds UI state only; entities kept for mock mode)
   companies: Company[];
   users: User[];
   jobs: Job[];
@@ -104,11 +123,26 @@ export interface AppStore {
 export const useAppStore = create<AppStore>()(
   persist(
     (set, get) => ({
+      isBlindMode: typeof window !== 'undefined' ? localStorage.getItem('hireswift_blind_mode') === 'true' : false,
+      setBlindMode: (enabled: boolean) => {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('hireswift_blind_mode', String(enabled))
+        }
+        set({ isBlindMode: enabled })
+      },
+      toggleBlindMode: () => {
+        const next = !get().isBlindMode
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('hireswift_blind_mode', String(next))
+        }
+        set({ isBlindMode: next })
+      },
+
       currentCompanyId: 'company-nova',
       currentUser: SEED_USERS[0],
       companies: SEED_COMPANIES,
       users: SEED_USERS,
-      jobs: SEED_JOBS,
+      jobs: isMockMode ? SEED_JOBS : [],
       candidates: initialSeed.candidates,
       applications: initialSeed.applications,
       stageHistories: initialSeed.stageHistories,
@@ -788,6 +822,25 @@ export const useAppStore = create<AppStore>()(
     }),
     {
       name: 'hireswift-storage',
+      partialize: (state) => {
+        if (!isMockMode) {
+          // In live mode, store UI state ONLY
+          return {
+            isBlindMode: state.isBlindMode,
+            currentCompanyId: state.currentCompanyId,
+          } as any
+        }
+        return state
+      },
+      onRehydrateStorage: () => (state) => {
+        if (state && !isMockMode) {
+          state.candidates = []
+          state.jobs = []
+          state.applications = []
+          state.stageHistories = []
+          state.duplicateGroups = []
+        }
+      },
     }
   )
 )

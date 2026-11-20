@@ -1,6 +1,9 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAppStore } from '@/store'
+import { api, USE_MOCK, SkillGapItem } from '@/api'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
+import { EmptyState } from '@/components/ui/EmptyState'
 import {
   BarChart,
   Bar,
@@ -13,86 +16,123 @@ import {
   Cell,
   Legend,
 } from 'recharts'
-import { BarChart3, AlertCircle, TrendingUp, MapPin, GraduationCap, CheckCircle2 } from 'lucide-react'
+import { BarChart3, AlertCircle, TrendingUp, MapPin, GraduationCap, CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react'
+import { Job, Application, Candidate } from '@/types'
 
 export const InsightsPage: React.FC = () => {
   const { currentCompanyId, candidates, jobs, applications } = useAppStore()
 
   const [selectedJobId, setSelectedJobId] = useState<string>('all')
 
-  const companyJobs = jobs.filter((j) => j.companyId === currentCompanyId)
-  const companyCandidates = candidates.filter((c) => c.companyId === currentCompanyId)
-  const companyApplications = applications.filter((a) => a.companyId === currentCompanyId)
+  // Live state
+  const [liveJobs, setLiveJobs] = useState<Job[]>([])
+  const [liveApplications, setLiveApplications] = useState<Application[]>([])
+  const [liveSkillGap, setLiveSkillGap] = useState<SkillGapItem[]>([])
+  const [loading, setLoading] = useState(!USE_MOCK)
+  const [error, setError] = useState<string | null>(null)
 
-  const relevantApps = selectedJobId === 'all'
-    ? companyApplications
-    : companyApplications.filter((a) => a.jobId === selectedJobId)
+  const fetchInsights = useCallback(async () => {
+    if (USE_MOCK) return
+    setLoading(true)
+    setError(null)
+    try {
+      const [jList, aList] = await Promise.all([
+        api.getJobs(),
+        api.getApplications(selectedJobId !== 'all' ? selectedJobId : undefined),
+      ])
+      setLiveJobs(jList)
+      setLiveApplications(aList)
 
-  // 1. Skill Supply vs Demand
-  const skillFrequency: Record<string, number> = {}
-  companyCandidates.forEach((c) => {
-    c.skills.forEach((s) => {
-      skillFrequency[s] = (skillFrequency[s] || 0) + 1
+      const targetJobId = selectedJobId !== 'all' ? selectedJobId : (jList[0]?.id || '')
+      if (targetJobId) {
+        const gapRes = await api.getJobSkillGap(targetJobId)
+        setLiveSkillGap(gapRes.skills)
+      } else {
+        setLiveSkillGap([])
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to retrieve analytics and skill-gap insights.')
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedJobId])
+
+  useEffect(() => {
+    fetchInsights()
+  }, [fetchInsights])
+
+  const companyJobs = USE_MOCK
+    ? jobs.filter((j) => j.companyId === currentCompanyId)
+    : liveJobs
+
+  const activeApps = USE_MOCK
+    ? (selectedJobId === 'all'
+        ? applications.filter((a) => a.companyId === currentCompanyId)
+        : applications.filter((a) => a.companyId === currentCompanyId && a.jobId === selectedJobId))
+    : liveApplications
+
+  // 1. Pipeline Funnel Counts from GET /applications
+  const stageCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      applied: 0,
+      shortlisted: 0,
+      interview: 0,
+      offer: 0,
+      rejected: 0,
+    }
+    activeApps.forEach((a) => {
+      const st = a.stage?.toLowerCase() || 'applied'
+      if (counts[st] !== undefined) {
+        counts[st]++
+      } else {
+        counts.applied++
+      }
     })
-  })
+    return [
+      { stage: 'Applied', count: counts.applied, fill: '#2563EB' },
+      { stage: 'Shortlisted', count: counts.shortlisted, fill: '#7C3AED' },
+      { stage: 'Interview', count: counts.interview, fill: '#F59E0B' },
+      { stage: 'Offer', count: counts.offer, fill: '#16A34A' },
+      { stage: 'Rejected', count: counts.rejected, fill: '#DC2626' },
+    ]
+  }, [activeApps])
 
-  const topSkillsData = Object.entries(skillFrequency)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 7)
-    .map(([skill, count]) => ({
-      skill,
-      applicants: count,
-    }))
+  // 2. Skill-Gap from GET /jobs/{id}/skill-gap
+  const skillGapChartData = useMemo(() => {
+    if (!USE_MOCK) {
+      return liveSkillGap.map((s) => ({
+        skill: s.name,
+        applicants: s.applicants_count,
+        coverage: s.coverage_pct,
+        required: s.required,
+      }))
+    }
+    const skillFrequency: Record<string, number> = {}
+    candidates
+      .filter((c) => c.companyId === currentCompanyId)
+      .forEach((c) => {
+        c.skills.forEach((s) => {
+          skillFrequency[s] = (skillFrequency[s] || 0) + 1
+        })
+      })
+    return Object.entries(skillFrequency)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 7)
+      .map(([skill, count]) => ({
+        skill,
+        applicants: count,
+        coverage: Math.round((count / (candidates.length || 1)) * 100),
+        required: true,
+      }))
+  }, [liveSkillGap, candidates, currentCompanyId])
 
-  // 2. Top Missing Skills across current job applications
-  const missingSkillFrequency: Record<string, number> = {}
-  relevantApps.forEach((a) => {
-    a.missingSkills.forEach((s) => {
-      missingSkillFrequency[s] = (missingSkillFrequency[s] || 0) + 1
-    })
-  })
-
-  const topMissingData = Object.entries(missingSkillFrequency)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([skill, count]) => ({
-      skill,
-      count,
-    }))
-
-  // 3. Applicants by College
-  const collegeFrequency: Record<string, number> = {}
-  companyCandidates.forEach((c) => {
-    const shortName = c.college.split('(')[0].trim()
-    collegeFrequency[shortName] = (collegeFrequency[shortName] || 0) + 1
-  })
-
-  const collegeData = Object.entries(collegeFrequency)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
-    .map(([college, count]) => ({
-      college,
-      count,
-    }))
-
-  // 4. Source Effectiveness
-  const sourceFrequency: Record<string, number> = {}
-  companyCandidates.forEach((c) => {
-    sourceFrequency[c.source] = (sourceFrequency[c.source] || 0) + 1
-  })
-
-  const sourceData = Object.entries(sourceFrequency).map(([name, value]) => ({
-    name,
-    value,
-  }))
+  // 3. Dynamic Data Callouts
+  const totalAppsCount = activeApps.length
+  const shortlistedCount = activeApps.filter((a) => a.stage === 'shortlisted').length
+  const interviewCount = activeApps.filter((a) => a.stage === 'interview').length
+  const offerCount = activeApps.filter((a) => a.stage === 'offer').length
 
   const COLORS = ['#4F46E5', '#14B8A6', '#F59E0B', '#EC4899', '#8B5CF6']
-
-  // 5. Dynamic Data Callouts
-  const totalPool = companyCandidates.length
-  const k8sCount = companyCandidates.filter((c) => c.skills.includes('Kubernetes') || c.skills.includes('K8s')).length
-  const tier1Count = companyCandidates.filter((c) => c.tier === 'Tier-1').length
-  const highCgpaCount = companyCandidates.filter((c) => (c.cgpa ?? 0) >= 8.5).length
 
   return (
     <div className="space-y-6">
@@ -104,7 +144,7 @@ export const InsightsPage: React.FC = () => {
             Talent Pool Insights & Analytics
           </h1>
           <p className="text-xs text-muted mt-0.5">
-            Skill supply vs demand metrics, educational diversity, and channel conversion.
+            Skill-gap analytics from job requirements and live pipeline stage conversions from applications.
           </p>
         </div>
 
@@ -125,124 +165,120 @@ export const InsightsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Dynamic Key Data Callouts */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-4 space-y-1">
-          <div className="flex items-center gap-2 text-indigo-900 font-bold text-xs uppercase">
-            <AlertCircle className="w-4 h-4 text-primary" />
-            Critical Skill Gap Callout
+      {/* Error State with Retry */}
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-rose-800 text-sm font-semibold">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{error}</span>
           </div>
-          <p className="text-xs text-indigo-950 font-medium leading-relaxed">
-            Only <strong className="font-extrabold text-primary">{k8sCount} of {totalPool}</strong> applicants ({Math.round((k8sCount / totalPool) * 100)}%) possess Kubernetes skills in this pool.
-          </p>
+          <Button variant="outline" size="sm" onClick={fetchInsights}>
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {/* Dynamic Key Data Callouts */}
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 space-y-1">
+          <div className="flex items-center gap-2 text-blue-900 font-bold text-xs uppercase">
+            <BarChart3 className="w-4 h-4 text-blue-600" />
+            Total Applications
+          </div>
+          <p className="text-2xl font-extrabold text-blue-900">{totalAppsCount}</p>
+          <p className="text-[11px] text-blue-700">Candidates in hiring process</p>
         </div>
 
-        <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 space-y-1">
-          <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs uppercase">
-            <GraduationCap className="w-4 h-4 text-emerald-600" />
-            Tier-1 Institution Ratio
+        <div className="bg-purple-50/70 border border-purple-200 rounded-xl p-4 space-y-1">
+          <div className="flex items-center gap-2 text-purple-900 font-bold text-xs uppercase">
+            <CheckCircle2 className="w-4 h-4 text-purple-600" />
+            Shortlisted Pool
           </div>
-          <p className="text-xs text-emerald-950 font-medium leading-relaxed">
-            <strong className="font-extrabold text-emerald-700">{tier1Count}</strong> applicants ({Math.round((tier1Count / totalPool) * 100)}%) originate from premier IIT / BITS / NIT campuses.
-          </p>
+          <p className="text-2xl font-extrabold text-purple-900">{shortlistedCount}</p>
+          <p className="text-[11px] text-purple-700">Advanced from resume screening</p>
         </div>
 
         <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 space-y-1">
           <div className="flex items-center gap-2 text-amber-900 font-bold text-xs uppercase">
             <TrendingUp className="w-4 h-4 text-amber-600" />
-            High Academic Distinction
+            Interview Stage
           </div>
-          <p className="text-xs text-amber-950 font-medium leading-relaxed">
-            <strong className="font-extrabold text-amber-700">{highCgpaCount}</strong> candidates ({Math.round((highCgpaCount / totalPool) * 100)}%) maintain an academic CGPA of 8.5 or higher.
-          </p>
+          <p className="text-2xl font-extrabold text-amber-900">{interviewCount}</p>
+          <p className="text-[11px] text-amber-700">Currently undergoing interviews</p>
+        </div>
+
+        <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 space-y-1">
+          <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs uppercase">
+            <GraduationCap className="w-4 h-4 text-emerald-600" />
+            Offers Extended
+          </div>
+          <p className="text-2xl font-extrabold text-emerald-900">{offerCount}</p>
+          <p className="text-[11px] text-emerald-700">Final hiring stage reached</p>
         </div>
       </div>
 
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Chart 1: Skill Supply */}
-        <div className="bg-card rounded-xl border border-border p-5 shadow-soft space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-text">Skill Supply Frequency</h3>
-            <Badge variant="outline" size="sm">Top Technologies</Badge>
+      {totalAppsCount === 0 && !loading ? (
+        <EmptyState
+          icon={<BarChart3 className="w-8 h-8 text-primary" />}
+          title="No analytics available"
+          description="Upload resumes or create job applications to generate recruitment funnel and skill-gap metrics."
+        />
+      ) : (
+        /* Charts Grid */
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Chart 1: Pipeline Stage Conversion Funnel from GET /applications */}
+          <div className="bg-card rounded-xl border border-border p-5 shadow-soft space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-text">Pipeline Stage Conversion Funnel</h3>
+              <Badge variant="outline" size="sm">GET /applications</Badge>
+            </div>
+            <p className="text-xs text-muted">
+              Applicant volume across each of the 5 recruitment pipeline stages.
+            </p>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stageCounts} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+                  <XAxis dataKey="stage" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#4F46E5" radius={[4, 4, 0, 0]}>
+                    {stageCounts.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topSkillsData} layout="vertical" margin={{ top: 5, right: 20, left: 25, bottom: 5 }}>
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis dataKey="skill" type="category" tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Bar dataKey="applicants" fill="#4F46E5" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
 
-        {/* Chart 2: Top Missing Skills */}
-        <div className="bg-card rounded-xl border border-border p-5 shadow-soft space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-text">Highest Frequency Missing Requirements</h3>
-            <Badge variant="danger" size="sm">Deficit Gaps</Badge>
-          </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={topMissingData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                <XAxis dataKey="skill" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#DC2626" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Chart 3: College Representation */}
-        <div className="bg-card rounded-xl border border-border p-5 shadow-soft space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-text">Applicants by College Campus</h3>
-            <Badge variant="outline" size="sm">Universities</Badge>
-          </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={collegeData} margin={{ top: 5, right: 10, left: -20, bottom: 30 }}>
-                <XAxis dataKey="college" tick={{ fontSize: 10 }} angle={-25} textAnchor="end" />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#14B8A6" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          {/* Chart 2: Skill-Gap Coverage from GET /jobs/{id}/skill-gap */}
+          <div className="bg-card rounded-xl border border-border p-5 shadow-soft space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-text">Skill-Gap Coverage & Applicants</h3>
+              <Badge variant="outline" size="sm">GET /jobs/{'{id}'}/skill-gap</Badge>
+            </div>
+            <p className="text-xs text-muted">
+              Coverage percentage and applicant count for key competencies.
+            </p>
+            <div className="h-64">
+              {skillGapChartData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-muted">
+                  No skill-gap data available for selected job.
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={skillGapChartData} layout="vertical" margin={{ top: 5, right: 20, left: 35, bottom: 5 }}>
+                    <XAxis type="number" domain={[0, 100]} unit="%" tick={{ fontSize: 11 }} />
+                    <YAxis dataKey="skill" type="category" tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(value: any) => [`${value}% coverage`, 'Coverage']} />
+                    <Bar dataKey="coverage" fill="#14B8A6" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
           </div>
         </div>
-
-        {/* Chart 4: Sourcing Channels */}
-        <div className="bg-card rounded-xl border border-border p-5 shadow-soft space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-text">Candidate Sourcing Channels</h3>
-            <Badge variant="secondary" size="sm">Channel Attribution</Badge>
-          </div>
-          <div className="h-64 flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={sourceData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {sourceData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend iconSize={8} wrapperStyle={{ fontSize: '11px' }} />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   )
 }

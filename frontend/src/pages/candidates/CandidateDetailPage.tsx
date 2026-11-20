@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
 import { api, USE_MOCK } from '@/api'
@@ -48,24 +48,34 @@ export const CandidateDetailPage: React.FC = () => {
     updateApplicationStage,
     addApplicationNote,
     addScorecard,
+    isBlindMode,
   } = useAppStore()
 
   const [liveCandidate, setLiveCandidate] = useState<Candidate | null>(null)
-  const [isLoadingCand, setIsLoadingCand] = useState(false)
+  const [isLoadingCand, setIsLoadingCand] = useState(!USE_MOCK)
+  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
+  const fetchCandidate = useCallback(async () => {
     if (!id) return
-    if (!USE_MOCK) {
-      setIsLoadingCand(true)
-      api.getCandidate(id)
-        .then((c) => setLiveCandidate(c))
-        .catch(() => {})
-        .finally(() => setIsLoadingCand(false))
+    if (USE_MOCK) return
+    setIsLoadingCand(true)
+    setError(null)
+    try {
+      const c = await api.getCandidate(id)
+      setLiveCandidate(c)
+    } catch (err: any) {
+      setError(err.message || 'Failed to load candidate.')
+    } finally {
+      setIsLoadingCand(false)
     }
   }, [id])
 
+  useEffect(() => {
+    fetchCandidate()
+  }, [fetchCandidate])
+
   const storeCandidate = candidates.find((c) => c.id === id)
-  const candidate = !USE_MOCK ? (liveCandidate || storeCandidate) : (storeCandidate || liveCandidate)
+  const candidate = USE_MOCK ? storeCandidate : liveCandidate
   const company = companies.find((c) => c.id === currentCompanyId) || companies[0]
   const companyJobs = jobs.filter((j) => j.companyId === currentCompanyId)
 
@@ -97,13 +107,29 @@ export const CandidateDetailPage: React.FC = () => {
   >('Yes')
   const [scorecardNotes, setScorecardNotes] = useState('')
 
-  if (!candidate) {
+  if (isLoadingCand) {
     return (
-      <div className="p-8 text-center bg-white rounded-xl border border-border">
-        <h2 className="text-lg font-bold text-text">Candidate Not Found</h2>
-        <Button variant="outline" className="mt-4" onClick={() => navigate('/app/candidates')}>
-          Back to Candidates
-        </Button>
+      <div className="p-12 text-center bg-white rounded-xl border border-border">
+        <p className="text-sm text-muted">Loading candidate dossier...</p>
+      </div>
+    )
+  }
+
+  if (error || !candidate) {
+    return (
+      <div className="p-8 text-center bg-white rounded-xl border border-border space-y-3">
+        <h2 className="text-lg font-bold text-text">{error ? 'Error Loading Candidate' : 'Candidate Not Found'}</h2>
+        {error && <p className="text-xs text-rose-600">{error}</p>}
+        <div className="flex items-center justify-center gap-2">
+          {error && (
+            <Button variant="primary" size="sm" onClick={fetchCandidate}>
+              Retry
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => navigate('/app/candidates')}>
+            Back to Candidates
+          </Button>
+        </div>
       </div>
     )
   }
@@ -128,10 +154,10 @@ export const CandidateDetailPage: React.FC = () => {
     (h) => h.applicationId === activeApp?.id
   )
 
-  const isBlind = company.settings.blindMode
-  const displayName = isBlind ? `Candidate #${candidate.id.slice(-4)}` : candidate.name
+  const isBlind = isBlindMode
+  const displayName = isBlind ? `Candidate #${candidate.id}` : candidate.name
   const displayCollege = isBlind ? '[Hidden College]' : candidate.college
-  const displayLocation = isBlind && company.settings.hiddenFields.includes('location') ? '[Hidden City]' : candidate.location
+  const displayLocation = isBlind ? '[Hidden Location]' : candidate.location
 
   // Actions
   const handleShortlist = () => {

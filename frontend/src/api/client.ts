@@ -2,7 +2,8 @@ import { z } from 'zod'
 import { Candidate, Job, Application, Company } from '@/types'
 import { useAppStore } from '@/store'
 import { matchScore } from '@/lib/scoring'
-import { ApiCandidateSchema, fromApiCandidate, toApiCandidate } from './mappers'
+import { ApiCandidateSchema, fromApiCandidate, toApiCandidate, fromApiApplication } from './mappers'
+import { fromApiJob, toApiJob } from './jobMapper'
 
 // Environment Configurations
 export const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
@@ -87,13 +88,16 @@ export const JobRankingItemSchema = z.object({
   name: z.string().optional(),
   college: z.string().optional(),
   application_id: z.string().optional().default(''),
-  match_score: z.number(),
-  breakdown: z.object({
-    skills: z.number(),
-    experience: z.number(),
-    education: z.number(),
-    semantic: z.number(),
-  }),
+  match_score: z.number().nullable().optional(),
+  breakdown: z
+    .object({
+      skills: z.number().nullable().optional(),
+      experience: z.number().nullable().optional(),
+      education: z.number().nullable().optional(),
+      semantic: z.number().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
   matched_skills: z.array(z.string()).default([]),
   missing_skills: z.array(z.string()).default([]),
   explanation: z.string().default(''),
@@ -156,15 +160,17 @@ export interface BatchProgress {
 
 export interface JobRankingCandidate {
   candidate_id: string;
-  candidate: Candidate;
+  candidate?: Candidate;
+  name?: string;
+  college?: string;
   application_id: string;
-  match_score: number;
-  breakdown: {
-    skills: number;
-    experience: number;
-    education: number;
-    semantic: number;
-  };
+  match_score: number | null;
+  breakdown?: {
+    skills?: number | null;
+    experience?: number | null;
+    education?: number | null;
+    semantic?: number | null;
+  } | null;
   matched_skills: string[];
   missing_skills: string[];
   explanation: string;
@@ -191,15 +197,15 @@ export interface SkillGapResponse {
 
 export interface CompareCandidateItem {
   candidate: Candidate;
-  match_score: number;
-  breakdown: {
-    skills: number;
-    experience: number;
-    education: number;
-    semantic: number;
-  };
-  matched_skills: string[];
-  missing_skills: string[];
+  match_score?: number | null;
+  breakdown?: {
+    skills?: number | null;
+    experience?: number | null;
+    education?: number | null;
+    semantic?: number | null;
+  } | null;
+  matched_skills?: string[];
+  missing_skills?: string[];
 }
 
 export interface CompareResponse {
@@ -235,7 +241,8 @@ export const mockApi = {
   },
 
   uploadResumesBulk: async (
-    files: File[]
+    files: File[],
+    jobId?: string
   ): Promise<{ batch_id: string; total_files: number; status: string }> => {
     await sleep(350)
     const batchId = `batch-${Date.now()}`
@@ -447,7 +454,7 @@ export const mockApi = {
     })
 
     // Sort descending by match score
-    ranked.sort((a, b) => b.match_score - a.match_score)
+    ranked.sort((a, b) => (b.match_score ?? 0) - (a.match_score ?? 0))
 
     return {
       job_id: jobId,
@@ -507,7 +514,7 @@ export const mockApi = {
   ): Promise<{ success: boolean; stage: string; historyId: string }> => {
     await sleep(250)
     const store = useAppStore.getState()
-    const app = store.applications.find((a) => a.id === applicationId)
+    const app = store.applications.find((a) => a.id === applicationId || a.application_id === applicationId)
     if (!app) throw new ApiError(404, `Application ${applicationId} not found.`)
 
     const currentStage = app.stage
@@ -552,9 +559,14 @@ export const mockApi = {
     ids.forEach((id) => {
       const cand = store.candidates.find((c) => c.id === id)
       if (!cand) return
-      let evaluated = {
-        score: 75,
-        breakdown: { skills: 70, experience: 80, education: 75, semantic: 75 },
+      let evaluated: {
+        score: number | null
+        breakdown: any
+        matchedSkills: string[]
+        missingSkills: string[]
+      } = {
+        score: null,
+        breakdown: null,
         matchedSkills: cand.skills.slice(0, 3),
         missingSkills: [] as string[],
       }
@@ -595,10 +607,14 @@ export const httpApi = {
   },
 
   uploadResumesBulk: async (
-    files: File[]
+    files: File[],
+    jobId?: string
   ): Promise<{ batch_id: string; total_files: number; status: string }> => {
     const formData = new FormData()
     files.forEach((file) => formData.append('files', file))
+    if (jobId) {
+      formData.append('job_id', jobId)
+    }
     const res = await fetch(`${API_BASE_URL}/resumes/bulk`, {
       method: 'POST',
       body: formData,
@@ -671,33 +687,39 @@ export const httpApi = {
   getJobs: async (): Promise<Job[]> => {
     const res = await fetch(`${API_BASE_URL}/jobs`)
     if (!res.ok) throw new ApiError(res.status, 'Failed to list jobs.')
-    return res.json()
+    const data = await res.json()
+    return (data || []).map((raw: any) => fromApiJob(raw))
   },
 
   getJob: async (id: string): Promise<Job> => {
     const res = await fetch(`${API_BASE_URL}/jobs/${id}`)
     if (!res.ok) throw new ApiError(res.status, 'Job not found.')
-    return res.json()
+    const data = await res.json()
+    return fromApiJob(data)
   },
 
   createJob: async (jobData: Omit<Job, 'id' | 'createdAt'>): Promise<Job> => {
+    const payload = toApiJob(jobData as Partial<Job>)
     const res = await fetch(`${API_BASE_URL}/jobs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(jobData),
+      body: JSON.stringify(payload),
     })
     if (!res.ok) throw new ApiError(res.status, 'Failed to create job.')
-    return res.json()
+    const data = await res.json()
+    return fromApiJob(data)
   },
 
   patchJob: async (id: string, updates: Partial<Job>): Promise<Job> => {
+    const payload = toApiJob(updates)
     const res = await fetch(`${API_BASE_URL}/jobs/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
+      body: JSON.stringify(payload),
     })
     if (!res.ok) throw new ApiError(res.status, 'Failed to update job.')
-    return res.json()
+    const data = await res.json()
+    return fromApiJob(data)
   },
 
   getJobRanking: async (jobId: string): Promise<JobRankingResponse> => {
@@ -728,21 +750,7 @@ export const httpApi = {
     const res = await fetch(url)
     if (!res.ok) throw new ApiError(res.status, 'Failed to fetch applications.')
     const data = await res.json()
-    return (data || []).map((raw: any) => ({
-      id: raw.id,
-      companyId: raw.company_id || raw.companyId || 'company-nova',
-      jobId: raw.job_id || raw.jobId,
-      candidateId: raw.candidate_id || raw.candidateId,
-      stage: raw.stage || 'applied',
-      matchScore: raw.match_score ?? raw.matchScore ?? 75,
-      breakdown: raw.breakdown || { skills: 75, experience: 75, education: 75, semantic: 75 },
-      matchedSkills: raw.matched_skills || raw.matchedSkills || [],
-      missingSkills: raw.missing_skills || raw.missingSkills || [],
-      explanation: raw.explanation || '',
-      evidenceSnippets: raw.evidence_snippets || raw.evidenceSnippets || [],
-      notes: raw.notes || [],
-      createdAt: raw.created_at || raw.createdAt || new Date().toISOString(),
-    }))
+    return (data || []).map((raw: any) => fromApiApplication(raw))
   },
 
   moveApplication: async (

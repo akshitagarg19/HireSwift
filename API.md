@@ -11,13 +11,19 @@
 ## ⚠️ CHANGES FOR AKSHITA (Backend Alignment Checklist)
 1. **`GET /jobs/{id}/ranking` item `application_id`**:
    - Each item in the `candidates` array must include `application_id: string` so the Kanban and detail views can advance or track the candidate's active application record.
-2. **`GET /applications` Endpoint**:
+2. **`GET /applications` Endpoint & Candidate Summary**:
    - Add endpoint `GET /applications` accepting optional query parameter `?job_id=string`.
-   - Returns a list of applications: `[{ id, job_id, candidate_id, stage, match_score, created_at }]`.
-3. **`duplicate_group_id` in `GET /candidates`**:
+   - Returns a list of applications using `application_id` (not `id`), matching ranking items:
+     `[{ application_id, job_id, candidate_id, stage, match_score, breakdown, matched_skills, missing_skills, explanation, created_at, candidate: { name, college, location, cgpa, skills, is_duplicate } }]`.
+   - Each application includes embedded `candidate` summary object `{ name, college, location, cgpa, skills, is_duplicate }` for high-performance Kanban rendering without secondary candidate lookups.
+   - `match_score` and `breakdown` can be `null` if the candidate has not been scored yet (no invented default values).
+3. **Job Schema in snake_case**:
+   - Standardize all job endpoints (`GET /jobs`, `POST /jobs`, `PATCH /jobs/{id}`) to snake_case schema:
+     `{ id, title, department, location, jd_text, required_skills, preferred_skills, min_experience, min_cgpa, grad_years, status, created_at, applicant_count }`.
+4. **`POST /resumes/bulk` with optional `job_id`**:
+   - Ingesting resumes accepts an optional form parameter `job_id: string`. If passed, candidates and initial applications are linked to this requisition; if omitted, they enter the general talent pool. Ingestion automatically creates candidate profiles and initial application records in `applied` stage upon completion.
+5. **`duplicate_group_id` in `GET /candidates`**:
    - Candidate records should include optional `duplicate_group_id: string | null` alongside `is_duplicate: bool` so duplicate clusters can be grouped directly from backend deduplication signals.
-4. **`POST /resumes/bulk` Ingestion Behavior**:
-   - Ingesting resumes must create both candidate records and initial application records in stage `applied` (linked to the target job or general talent pool) once parsing completes.
 
 ---
 
@@ -43,7 +49,9 @@ Returns the status of the FastAPI backend and database connectivity.
 Upload one or multiple resumes for background parsing and vector indexing. Ingestion automatically creates candidate profiles and initial application records in `applied` stage upon completion.
 
 - **Content-Type:** `multipart/form-data`
-- **Body:** `files`: List of files (`.pdf`, `.docx`, max 10MB each)
+- **Body:**
+  - `files`: List of files (`.pdf`, `.docx`, max 10MB each)
+  - `job_id`: (Optional) Target job requisition ID. When supplied, newly parsed candidates are linked to this requisition as applications. If omitted, candidates are added to the general talent pool.
 
 **Response:** `202 Accepted`
 ```json
@@ -148,14 +156,82 @@ Update parsed fields, correct low-confidence values, or add tags.
 
 ## 4. Jobs & Competency Profiles
 
+Job objects are structured in standard `snake_case` across all job endpoints:
+```json
+{
+  "id": "job-101",
+  "title": "Senior Full Stack Engineer",
+  "department": "Engineering",
+  "location": "Bengaluru",
+  "jd_text": "Looking for a Senior Full Stack Engineer proficient in React and Python.",
+  "required_skills": ["React", "TypeScript", "Python", "Node.js"],
+  "preferred_skills": ["Docker", "PostgreSQL", "AWS"],
+  "min_experience": 3,
+  "min_cgpa": 7.5,
+  "grad_years": [2022, 2023, 2024],
+  "status": "active",
+  "created_at": "2026-11-20T10:00:00Z",
+  "applicant_count": 12
+}
+```
+
 ### `GET /jobs`
 List all active job requisitions.
 
+**Response:** `200 OK`
+```json
+[
+  {
+    "id": "job-101",
+    "title": "Senior Full Stack Engineer",
+    "department": "Engineering",
+    "location": "Bengaluru",
+    "jd_text": "Looking for a Senior Full Stack Engineer...",
+    "required_skills": ["React", "TypeScript", "Python", "Node.js"],
+    "preferred_skills": ["Docker", "PostgreSQL"],
+    "min_experience": 3.0,
+    "min_cgpa": 7.5,
+    "grad_years": [2022, 2023, 2024],
+    "status": "active",
+    "created_at": "2026-11-20T10:00:00Z",
+    "applicant_count": 12
+  }
+]
+```
+
 ### `POST /jobs`
-Create a new job posting. The backend parses requirements and required skills.
+Create a new job posting in snake_case.
+
+**Request Body:**
+```json
+{
+  "title": "Frontend Engineer",
+  "department": "Engineering",
+  "location": "Bengaluru",
+  "jd_text": "We are looking for a skilled Frontend Engineer...",
+  "required_skills": ["React", "TypeScript", "Tailwind CSS"],
+  "preferred_skills": ["Next.js", "GraphQL"],
+  "min_experience": 2.0,
+  "min_cgpa": 7.0,
+  "grad_years": [2023, 2024],
+  "status": "active"
+}
+```
+
+**Response:** `201 Created` (returns created Job object)
 
 ### `PATCH /jobs/{id}`
-Update job title, description, department, required/preferred skills, or status.
+Update job attributes in snake_case.
+
+**Request Body:** (Partial Job object)
+```json
+{
+  "title": "Lead Frontend Engineer",
+  "status": "paused"
+}
+```
+
+**Response:** `200 OK` (returns updated Job object)
 
 ### `GET /jobs/{id}/ranking`
 Get ranked candidates scored specifically against this job's competencies and JD.
@@ -216,12 +292,29 @@ List recruitment applications across all jobs or filter by specific job.
 ```json
 [
   {
-    "id": "app-001",
+    "application_id": "app-001",
     "job_id": "job-101",
     "candidate_id": "cand-001",
     "stage": "applied",
     "match_score": 91,
-    "created_at": "2026-11-20T10:00:00Z"
+    "breakdown": {
+      "skills": 95,
+      "experience": 85,
+      "education": 90,
+      "semantic": 92
+    },
+    "matched_skills": ["React", "TypeScript", "Python", "Node.js"],
+    "missing_skills": ["Kubernetes"],
+    "explanation": "Strong match for Senior Full Stack Engineer based on skill portfolio.",
+    "created_at": "2026-11-20T10:00:00Z",
+    "candidate": {
+      "name": "Aarav Sharma",
+      "college": "IIT Delhi",
+      "location": "Bengaluru",
+      "cgpa": 8.8,
+      "skills": ["React", "TypeScript", "Python"],
+      "is_duplicate": false
+    }
   }
 ]
 ```

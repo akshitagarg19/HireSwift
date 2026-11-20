@@ -80,6 +80,8 @@ export interface Job {
   scoringWeights?: ScoringWeights;
   status: 'Active' | 'Paused' | 'Closed';
   createdAt: string;
+  applicantCount?: number;
+  applicant_count?: number;
 }
 
 export interface WorkExperience {
@@ -150,20 +152,30 @@ export interface InterviewScorecard {
 }
 
 export interface ScoreBreakdown {
-  skills: number;
-  experience: number;
-  education: number;
-  semantic: number;
+  skills?: number | null;
+  experience?: number | null;
+  education?: number | null;
+  semantic?: number | null;
+}
+
+export interface ApplicationCandidateSummary {
+  name: string;
+  college?: string;
+  location?: string;
+  cgpa?: number | null;
+  skills?: string[];
+  is_duplicate?: boolean;
 }
 
 export interface Application {
   id: string;
+  application_id?: string;
   companyId: string;
   jobId: string;
   candidateId: string;
   stage: string;
-  matchScore: number;
-  breakdown: ScoreBreakdown;
+  matchScore: number | null;
+  breakdown: ScoreBreakdown | null;
   matchedSkills: string[];
   missingSkills: string[];
   explanation: string;
@@ -171,6 +183,7 @@ export interface Application {
   notes: ApplicationNote[];
   scorecards?: InterviewScorecard[];
   createdAt: string;
+  candidate?: ApplicationCandidateSummary;
 }
 
 export interface StageHistory {

@@ -143,8 +143,8 @@ export const CandidateDetailPage: React.FC = () => {
     ? matchScore(candidate, activeJob, company.settings.scoringWeights, company.settings.skillSynonyms)
     : null
 
-  const displayScore = activeApp ? activeApp.matchScore : evaluatedMatch?.score || 0
-  const displayBreakdown = activeApp ? activeApp.breakdown : evaluatedMatch?.breakdown || { skills: 0, experience: 0, education: 0, semantic: 0 }
+  const displayScore = activeApp?.matchScore !== undefined ? activeApp.matchScore : evaluatedMatch?.score ?? null
+  const displayBreakdown = activeApp?.breakdown !== undefined ? activeApp.breakdown : evaluatedMatch?.breakdown ?? null
   const displayMatched = activeApp ? activeApp.matchedSkills : evaluatedMatch?.matchedSkills || []
   const displayMissing = activeApp ? activeApp.missingSkills : evaluatedMatch?.missingSkills || []
   const displayExplanation = activeApp ? activeApp.explanation : evaluatedMatch?.explanation || ''
@@ -763,7 +763,13 @@ export const CandidateDetailPage: React.FC = () => {
               <ScoreRing score={displayScore} size="xl" />
               <div className="mt-2 text-center">
                 <div className="text-sm font-bold text-text">
-                  {displayScore >= 80 ? 'High Fit Candidate' : displayScore >= 60 ? 'Moderate Fit' : 'Low Alignment'}
+                  {displayScore == null
+                    ? 'Unscored'
+                    : displayScore >= 80
+                    ? 'High Fit Candidate'
+                    : displayScore >= 60
+                    ? 'Moderate Fit'
+                    : 'Low Alignment'}
                 </div>
                 <div className="text-xs text-muted mt-0.5">Automated Match Score</div>
               </div>
@@ -776,40 +782,40 @@ export const CandidateDetailPage: React.FC = () => {
               <div className="space-y-1">
                 <div className="flex justify-between text-xs">
                   <span className="text-muted">Skills Coverage ({company.settings.scoringWeights.skills}%)</span>
-                  <span className="font-bold text-text">{displayBreakdown.skills}%</span>
+                  <span className="font-bold text-text">{displayBreakdown?.skills != null ? `${displayBreakdown.skills}%` : '-'}</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
-                  <div className="h-full bg-indigo-600 rounded-full" style={{ width: `${displayBreakdown.skills}%` }} />
+                  <div className="h-full bg-indigo-600 rounded-full" style={{ width: `${displayBreakdown?.skills ?? 0}%` }} />
                 </div>
               </div>
 
               <div className="space-y-1">
                 <div className="flex justify-between text-xs">
                   <span className="text-muted">Experience Fit ({company.settings.scoringWeights.experience}%)</span>
-                  <span className="font-bold text-text">{displayBreakdown.experience}%</span>
+                  <span className="font-bold text-text">{displayBreakdown?.experience != null ? `${displayBreakdown.experience}%` : '-'}</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
-                  <div className="h-full bg-blue-600 rounded-full" style={{ width: `${displayBreakdown.experience}%` }} />
+                  <div className="h-full bg-blue-600 rounded-full" style={{ width: `${displayBreakdown?.experience ?? 0}%` }} />
                 </div>
               </div>
 
               <div className="space-y-1">
                 <div className="flex justify-between text-xs">
                   <span className="text-muted">Academic & CGPA ({company.settings.scoringWeights.education}%)</span>
-                  <span className="font-bold text-text">{displayBreakdown.education}%</span>
+                  <span className="font-bold text-text">{displayBreakdown?.education != null ? `${displayBreakdown.education}%` : '-'}</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
-                  <div className="h-full bg-purple-600 rounded-full" style={{ width: `${displayBreakdown.education}%` }} />
+                  <div className="h-full bg-purple-600 rounded-full" style={{ width: `${displayBreakdown?.education ?? 0}%` }} />
                 </div>
               </div>
 
               <div className="space-y-1">
                 <div className="flex justify-between text-xs">
                   <span className="text-muted">Semantic Similarity ({company.settings.scoringWeights.semantic}%)</span>
-                  <span className="font-bold text-text">{displayBreakdown.semantic}%</span>
+                  <span className="font-bold text-text">{displayBreakdown?.semantic != null ? `${displayBreakdown.semantic}%` : '-'}</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
-                  <div className="h-full bg-teal-600 rounded-full" style={{ width: `${displayBreakdown.semantic}%` }} />
+                  <div className="h-full bg-teal-600 rounded-full" style={{ width: `${displayBreakdown?.semantic ?? 0}%` }} />
                 </div>
               </div>
             </div>

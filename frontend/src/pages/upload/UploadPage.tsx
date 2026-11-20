@@ -4,6 +4,7 @@ import { useAppStore } from '@/store'
 import { api, BatchProgress, USE_MOCK } from '@/api'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
+import { EmptyState } from '@/components/ui/EmptyState'
 import { toast } from 'sonner'
 import {
   UploadCloud,
@@ -16,6 +17,7 @@ import {
   X,
   FileCheck,
   AlertCircle,
+  Briefcase,
 } from 'lucide-react'
 
 interface UploadItem {
@@ -42,23 +44,39 @@ export const UploadPage: React.FC = () => {
 
   // In live mode, fetch target jobs from API
   const [liveJobs, setLiveJobs] = useState<any[]>([])
+  const [jobsLoaded, setJobsLoaded] = useState(USE_MOCK)
+  const [selectedJobId, setSelectedJobId] = useState<string>('')
+
   useEffect(() => {
     if (!USE_MOCK) {
       api.getJobs()
         .then((res) => {
           setLiveJobs(res)
-          if (res.length > 0 && !selectedJobId) {
+          if (res.length > 0) {
             setSelectedJobId(res[0].id)
+          } else {
+            setSelectedJobId('')
           }
         })
-        .catch(() => {})
+        .catch(() => {
+          setLiveJobs([])
+          setSelectedJobId('')
+        })
+        .finally(() => {
+          setJobsLoaded(true)
+        })
+    } else {
+      const mockCompanyJobs = jobs.filter((j) => j.companyId === currentCompanyId)
+      if (mockCompanyJobs.length > 0) {
+        setSelectedJobId(mockCompanyJobs[0].id)
+      }
     }
-  }, [])
+  }, [currentCompanyId, jobs])
 
+  // In live mode, NEVER fall back to store jobs - only use liveJobs from API
   const companyJobs = USE_MOCK
     ? jobs.filter((j) => j.companyId === currentCompanyId)
-    : (liveJobs.length > 0 ? liveJobs : jobs.filter((j) => j.companyId === currentCompanyId))
-  const [selectedJobId, setSelectedJobId] = useState<string>(companyJobs[0]?.id || '')
+    : liveJobs
 
   const [queue, setQueue] = useState<UploadItem[]>([])
   const [isUploading, setIsUploading] = useState(false)
@@ -164,11 +182,6 @@ export const UploadPage: React.FC = () => {
 
   // Bulk Upload and Progress Polling per plan
   const handleStartParsing = async () => {
-    if (!selectedJobId) {
-      toast.error('Please select a target job opening before parsing.')
-      return
-    }
-
     const queuedFiles = queue.filter((i) => i.status === 'Queued' && i.file).map((i) => i.file!)
     if (queuedFiles.length === 0) {
       toast.error('No valid queued resumes to parse.')
@@ -179,8 +192,8 @@ export const UploadPage: React.FC = () => {
     setProgressPercent(10)
 
     try {
-      // 1. POST /resumes/bulk multipart
-      const uploadResult = await api.uploadResumesBulk(queuedFiles)
+      // 1. POST /resumes/bulk multipart (sends optional job_id)
+      const uploadResult = await api.uploadResumesBulk(queuedFiles, selectedJobId || undefined)
       toast.info(`Parsing batch ${uploadResult.batch_id} initiated. Polling progress...`)
 
       // 2. Poll GET /batches/{id}/progress every second
@@ -307,10 +320,12 @@ export const UploadPage: React.FC = () => {
         <div className="flex items-center gap-2">
           <label className="text-xs font-semibold text-text whitespace-nowrap">Target Job:</label>
           <select
+            data-testid="upload-job-select"
             value={selectedJobId}
             onChange={(e) => setSelectedJobId(e.target.value)}
             className="h-9 px-3 rounded-lg border border-border bg-white text-xs font-semibold text-text cursor-pointer"
           >
+            <option value="">Upload to talent pool</option>
             {companyJobs.map((j) => (
               <option key={j.id} value={j.id}>
                 {j.title}
@@ -319,6 +334,21 @@ export const UploadPage: React.FC = () => {
           </select>
         </div>
       </div>
+
+      {/* Empty state when no jobs are available */}
+      {companyJobs.length === 0 && jobsLoaded && (
+        <EmptyState
+          data-testid="upload-no-jobs-empty-state"
+          icon={<Briefcase className="w-6 h-6" />}
+          title="No job requisitions found"
+          description="Create a job requisition first to match candidates against specific competencies, or upload directly to the general talent pool."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => navigate('/app/jobs')}>
+              Create Job
+            </Button>
+          }
+        />
+      )}
 
       {/* Drag & Drop Upload Zone */}
       <div

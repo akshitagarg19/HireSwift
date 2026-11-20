@@ -417,14 +417,14 @@ export const JobDetailPage: React.FC = () => {
                     <div className="w-48 shrink-0 space-y-1">
                       <div className="flex justify-between items-center text-xs">
                         <span className="font-bold text-text">Match Score</span>
-                        <span className="font-extrabold text-primary">{match_score}/100</span>
+                        <span className="font-extrabold text-primary">{match_score != null ? `${match_score}/100` : '-'}</span>
                       </div>
                       <div className="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${
-                            match_score >= 80 ? 'bg-emerald-500' : match_score >= 60 ? 'bg-indigo-500' : 'bg-amber-500'
+                            match_score != null && match_score >= 80 ? 'bg-emerald-500' : match_score != null && match_score >= 60 ? 'bg-indigo-500' : 'bg-amber-500'
                           }`}
-                          style={{ width: `${match_score}%` }}
+                          style={{ width: `${match_score ?? 0}%` }}
                         />
                       </div>
                     </div>
@@ -449,7 +449,7 @@ export const JobDetailPage: React.FC = () => {
                           variant="primary"
                           size="sm"
                           leftIcon={<Check className="w-3.5 h-3.5" />}
-                          onClick={() => handleShortlist(application_id, candidate.name)}
+                          onClick={() => handleShortlist(application_id, candidate?.name || 'Candidate')}
                         >
                           Shortlist
                         </Button>
@@ -473,19 +473,19 @@ export const JobDetailPage: React.FC = () => {
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                         <div className="p-2 rounded bg-white border border-border">
                           <div className="text-[10px] text-muted">Skills Coverage</div>
-                          <div className="font-bold text-text">{breakdown.skills}%</div>
+                          <div className="font-bold text-text">{breakdown?.skills != null ? `${breakdown.skills}%` : '-'}</div>
                         </div>
                         <div className="p-2 rounded bg-white border border-border">
                           <div className="text-[10px] text-muted">Experience Fit</div>
-                          <div className="font-bold text-text">{breakdown.experience}%</div>
+                          <div className="font-bold text-text">{breakdown?.experience != null ? `${breakdown.experience}%` : '-'}</div>
                         </div>
                         <div className="p-2 rounded bg-white border border-border">
                           <div className="text-[10px] text-muted">Education & CGPA</div>
-                          <div className="font-bold text-text">{breakdown.education}%</div>
+                          <div className="font-bold text-text">{breakdown?.education != null ? `${breakdown.education}%` : '-'}</div>
                         </div>
                         <div className="p-2 rounded bg-white border border-border">
                           <div className="text-[10px] text-muted">Semantic Alignment</div>
-                          <div className="font-bold text-text">{breakdown.semantic}%</div>
+                          <div className="font-bold text-text">{breakdown?.semantic != null ? `${breakdown.semantic}%` : '-'}</div>
                         </div>
                       </div>
 

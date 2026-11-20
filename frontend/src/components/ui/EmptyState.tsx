@@ -1,7 +1,7 @@
 import React from 'react'
 import { cn } from '@/lib/utils'
 
-export interface EmptyStateProps {
+export interface EmptyStateProps extends React.HTMLAttributes<HTMLDivElement> {
   icon?: React.ReactNode
   title: string
   description?: string
@@ -15,9 +15,11 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   description,
   action,
   className,
+  ...props
 }) => {
   return (
     <div
+      {...props}
       className={cn(
         'flex flex-col items-center justify-center p-8 text-center rounded-xl border border-dashed border-border bg-white/50 my-4',
         className

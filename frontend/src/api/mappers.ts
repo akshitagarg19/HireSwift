@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { Candidate } from '@/types'
+import { Candidate, Application } from '@/types'
 
 /**
  * Strict Zod Schema for FastAPI Candidate payloads (snake_case)
@@ -127,4 +127,104 @@ export function toApiCandidate(candidate: Partial<Candidate>): Record<string, an
   if (candidate.duplicateGroupId !== undefined) result.duplicate_group_id = candidate.duplicateGroupId
 
   return result
+}
+
+/**
+ * Strict Zod Schema for FastAPI Application payloads (snake_case)
+ */
+export const ApiApplicationSchema = z.object({
+  application_id: z.string().optional(),
+  id: z.string().optional(),
+  company_id: z.string().optional().default('company-nova'),
+  companyId: z.string().optional(),
+  job_id: z.string().optional(),
+  jobId: z.string().optional(),
+  candidate_id: z.string().optional(),
+  candidateId: z.string().optional(),
+  stage: z.string().optional().default('applied'),
+  match_score: z.number().nullable().optional(),
+  matchScore: z.number().nullable().optional(),
+  breakdown: z
+    .object({
+      skills: z.number().nullable().optional(),
+      experience: z.number().nullable().optional(),
+      education: z.number().nullable().optional(),
+      semantic: z.number().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+  matched_skills: z.array(z.string()).optional(),
+  matchedSkills: z.array(z.string()).optional(),
+  missing_skills: z.array(z.string()).optional(),
+  missingSkills: z.array(z.string()).optional(),
+  explanation: z.string().optional().default(''),
+  evidence_snippets: z.array(z.string()).optional().default([]),
+  evidenceSnippets: z.array(z.string()).optional().default([]),
+  created_at: z.string().optional(),
+  createdAt: z.string().optional(),
+  candidate: z
+    .object({
+      name: z.string().optional().default('Candidate'),
+      college: z.string().optional().default(''),
+      location: z.string().optional().default(''),
+      cgpa: z.number().nullable().optional(),
+      skills: z.array(z.string()).optional().default([]),
+      is_duplicate: z.boolean().optional().default(false),
+    })
+    .optional(),
+})
+
+export type ApiApplication = z.infer<typeof ApiApplicationSchema>
+
+/**
+ * Maps incoming snake_case backend Application to camelCase frontend model
+ * Accepts application_id first, falling back to id per specification.
+ * NO INVENTED VALUES: missing scores or breakdowns are mapped to null, NEVER 75.
+ */
+export function fromApiApplication(raw: unknown): Application {
+  const data = ApiApplicationSchema.parse(raw)
+  const appId = data.application_id || data.id || `app-${Date.now()}`
+
+  const resolvedScore =
+    data.match_score !== undefined
+      ? data.match_score
+      : data.matchScore !== undefined
+      ? data.matchScore
+      : null
+
+  const resolvedBreakdown = data.breakdown
+    ? {
+        skills: data.breakdown.skills ?? null,
+        experience: data.breakdown.experience ?? null,
+        education: data.breakdown.education ?? null,
+        semantic: data.breakdown.semantic ?? null,
+      }
+    : null
+
+  return {
+    id: appId,
+    application_id: appId,
+    companyId: data.company_id || data.companyId || 'company-nova',
+    jobId: data.job_id || data.jobId || '',
+    candidateId: data.candidate_id || data.candidateId || '',
+    stage: data.stage || 'applied',
+    matchScore: resolvedScore,
+    breakdown: resolvedBreakdown,
+    matchedSkills: data.matched_skills || data.matchedSkills || [],
+    missingSkills: data.missing_skills || data.missingSkills || [],
+    explanation: data.explanation || '',
+    evidenceSnippets: data.evidence_snippets || data.evidenceSnippets || [],
+    notes: [],
+    createdAt: data.created_at || data.createdAt || new Date().toISOString(),
+    candidate: data.candidate
+      ? {
+          name: data.candidate.name || 'Candidate',
+          college: data.candidate.college || '',
+          location: data.candidate.location || '',
+          cgpa: data.candidate.cgpa ?? null,
+          skills: data.candidate.skills || [],
+          is_duplicate: Boolean(data.candidate.is_duplicate),
+        }
+      : undefined,
+  }
 }

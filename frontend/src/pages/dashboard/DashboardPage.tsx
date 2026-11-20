@@ -74,7 +74,7 @@ export const DashboardPage: React.FC = () => {
       job: jobMap.get(app.jobId),
     }))
     .filter((item) => Boolean(item.candidate && item.job))
-    .sort((a, b) => b.app.matchScore - a.app.matchScore)
+    .sort((a, b) => (b.app.matchScore ?? 0) - (a.app.matchScore ?? 0))
     .slice(0, 5)
 
   // Funnel Data
@@ -371,7 +371,7 @@ export const DashboardPage: React.FC = () => {
 
               <div className="flex items-center gap-4 shrink-0">
                 <div className="text-right hidden sm:block text-[11px] text-muted">
-                  Skills: <strong className="text-text">{app.breakdown.skills}%</strong>
+                  Skills: <strong className="text-text">{app.breakdown?.skills != null ? `${app.breakdown.skills}%` : '-'}</strong>
                 </div>
                 <ScoreRing score={app.matchScore} size="sm" />
                 <ArrowRight className="w-4 h-4 text-muted" />

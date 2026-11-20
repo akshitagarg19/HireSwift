@@ -112,7 +112,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick
             defaultValue=""
             onChange={(e) => {
               if (e.target.value) {
-                onMoveTo(application.id, application.stage, e.target.value)
+                onMoveTo(application.application_id || application.id, application.stage, e.target.value)
                 e.target.value = ''
               }
             }}
@@ -186,7 +186,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, applications, onCard
         ) : (
           applications.map(({ application, candidate }) => (
             <KanbanCard
-              key={application.id}
+              key={application.application_id || application.id}
               application={application}
               candidate={candidate}
               onClick={() => onCardClick(candidate.id)}
@@ -213,7 +213,6 @@ export const PipelinePage: React.FC = () => {
   // Live state for !USE_MOCK
   const [liveJobs, setLiveJobs] = useState<Job[]>([])
   const [liveApplications, setLiveApplications] = useState<Application[]>([])
-  const [liveCandidates, setLiveCandidates] = useState<Candidate[]>([])
   const [loading, setLoading] = useState(!USE_MOCK)
   const [error, setError] = useState<string | null>(null)
 
@@ -224,20 +223,18 @@ export const PipelinePage: React.FC = () => {
     candidate: Candidate
   } | null>(null)
 
-  // Fetch live applications & candidates
+  // Fetch live applications & jobs (renders cards directly from application candidate summary)
   const fetchLivePipeline = useCallback(async () => {
     if (USE_MOCK) return
     setLoading(true)
     setError(null)
     try {
-      const [fetchedJobs, fetchedApps, fetchedCands] = await Promise.all([
+      const [fetchedJobs, fetchedApps] = await Promise.all([
         api.getJobs(),
         api.getApplications(selectedJobId !== 'all' ? selectedJobId : undefined),
-        api.getCandidates({ page_size: 100 }),
       ])
       setLiveJobs(fetchedJobs)
       setLiveApplications(fetchedApps)
-      setLiveCandidates(fetchedCands.items)
     } catch (err: any) {
       setError(err.message || 'Failed to load recruitment pipeline.')
     } finally {
@@ -270,35 +267,68 @@ export const PipelinePage: React.FC = () => {
     return true
   })
 
-  const currentCandidates = USE_MOCK ? candidates : liveCandidates
-  const candidateMap = new Map(currentCandidates.map((c) => [c.id, c]))
+  const candidateMap = USE_MOCK ? new Map(candidates.map((c) => [c.id, c])) : null
 
   const filteredItems = relevantApplications
-    .map((app) => ({
-      application: app,
-      candidate: candidateMap.get(app.candidateId) || {
-        id: app.candidateId,
-        companyId: app.companyId,
-        name: `Candidate #${app.candidateId}`,
-        email: '',
-        phone: '',
-        location: 'Unknown',
-        college: 'Unknown College',
-        degree: 'Degree',
-        branch: '',
-        skills: [],
-        experience: [],
-        projects: [],
-        certifications: [],
-        resumeText: '',
-        resumeFileName: '',
-        parseConfidence: 80,
-        fieldConfidence: {},
-        source: 'Application',
-        createdAt: app.createdAt,
-        customFields: {},
-      },
-    }))
+    .map((app) => {
+      let candidate: Candidate
+      if (USE_MOCK) {
+        candidate = candidateMap?.get(app.candidateId) || {
+          id: app.candidateId,
+          companyId: app.companyId,
+          name: `Candidate #${app.candidateId}`,
+          email: '',
+          phone: '',
+          location: 'Unknown',
+          college: 'Unknown College',
+          degree: 'Degree',
+          branch: '',
+          skills: [],
+          experience: [],
+          projects: [],
+          certifications: [],
+          resumeText: '',
+          resumeFileName: '',
+          parseConfidence: 80,
+          fieldConfidence: {},
+          source: 'Application',
+          createdAt: app.createdAt,
+          customFields: {},
+        }
+      } else {
+        const sum = app.candidate
+        candidate = {
+          id: app.candidateId,
+          companyId: app.companyId || 'company-nova',
+          name: sum?.name || `Candidate #${app.candidateId}`,
+          email: '',
+          phone: '',
+          location: sum?.location || 'Unknown',
+          college: sum?.college || 'Unknown College',
+          degree: 'Degree',
+          branch: '',
+          cgpa: sum?.cgpa,
+          skills: sum?.skills || [],
+          experienceYears: 0,
+          experience: [],
+          projects: [],
+          certifications: [],
+          resumeText: '',
+          resumeFileName: '',
+          parseConfidence: 90,
+          fieldConfidence: {},
+          source: 'Application',
+          createdAt: app.createdAt,
+          customFields: {},
+          isDuplicate: sum?.is_duplicate ?? false,
+        }
+      }
+
+      return {
+        application: app,
+        candidate,
+      }
+    })
     .filter((item) => {
       if (!search.trim()) return true
       const q = search.toLowerCase()
@@ -444,7 +474,7 @@ export const PipelinePage: React.FC = () => {
                 </div>
               </div>
               <div className="text-[11px] text-muted">
-                Match Score: <strong>{activeDragItem.application.matchScore}%</strong>
+                Match Score: <strong>{activeDragItem.application.matchScore != null ? `${activeDragItem.application.matchScore}%` : '-'}</strong>
               </div>
             </div>
           ) : null}

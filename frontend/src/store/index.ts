@@ -462,32 +462,37 @@ export const useAppStore = create<AppStore>()(
         const job = state.jobs.find((j) => j.id === jobId)
         const company = state.companies.find((c) => c.id === candidateData.companyId)
 
-        let match: ReturnType<typeof matchScore> = {
-          score: 75,
-          breakdown: { skills: 70, experience: 80, education: 75, semantic: 75 },
-          matchedSkills: candidateData.skills,
-          missingSkills: [],
-          explanation: 'Standard profile evaluated.',
-          evidenceSnippets: [],
-        }
+        let matchScoreVal: number | null = null
+        let breakdownVal: any = null
+        let matchedSkillsVal: string[] = []
+        let missingSkillsVal: string[] = []
+        let explanationVal = ''
+        let evidenceSnippetsVal: string[] = []
 
         if (job && company) {
-          match = matchScore(newCandidate, job, company.settings.scoringWeights, company.settings.skillSynonyms)
+          const evaluated = matchScore(newCandidate, job, company.settings.scoringWeights, company.settings.skillSynonyms)
+          matchScoreVal = evaluated.score
+          breakdownVal = evaluated.breakdown
+          matchedSkillsVal = evaluated.matchedSkills
+          missingSkillsVal = evaluated.missingSkills
+          explanationVal = evaluated.explanation
+          evidenceSnippetsVal = evaluated.evidenceSnippets
         }
 
         const appId = `app-${Date.now()}`
         const newApplication: Application = {
           id: appId,
+          application_id: appId,
           companyId: candidateData.companyId,
           jobId,
           candidateId: candId,
           stage: initialStage,
-          matchScore: Math.max(match.score, 96),
-          breakdown: match.breakdown,
-          matchedSkills: match.matchedSkills,
-          missingSkills: match.missingSkills,
-          explanation: match.explanation,
-          evidenceSnippets: match.evidenceSnippets,
+          matchScore: matchScoreVal,
+          breakdown: breakdownVal,
+          matchedSkills: matchedSkillsVal,
+          missingSkills: missingSkillsVal,
+          explanation: explanationVal,
+          evidenceSnippets: evidenceSnippetsVal,
           notes: [],
           createdAt,
         }

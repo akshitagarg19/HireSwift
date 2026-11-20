@@ -296,7 +296,7 @@ export const CandidatesPage: React.FC = () => {
     const map = new Map<string, Application>()
     applications.forEach((app) => {
       if (app.companyId === currentCompanyId) {
-        if (!map.has(app.candidateId) || app.matchScore > (map.get(app.candidateId)?.matchScore || 0)) {
+        if (!map.has(app.candidateId) || (app.matchScore ?? 0) > (map.get(app.candidateId)?.matchScore ?? 0)) {
           map.set(app.candidateId, app)
         }
       }

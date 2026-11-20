@@ -126,18 +126,17 @@ export const ComparePage: React.FC = () => {
   const evaluatedComparisons = USE_MOCK
     ? selectedCandidates.map((cand) => {
         const existingApp = applications.find((a) => a.jobId === selectedJobId && a.candidateId === cand.id)
-        const weights = activeJob?.scoringWeights || company.settings.scoringWeights
-        const match = activeJob
+        const match = activeJob && existingApp
           ? {
-              score: existingApp?.matchScore || 78,
-              breakdown: existingApp?.breakdown || { skills: 80, experience: 75, education: 80, semantic: 75 },
-              matchedSkills: existingApp?.matchedSkills || cand.skills.slice(0, 3),
-              missingSkills: existingApp?.missingSkills || [],
-              explanation: existingApp?.explanation || 'Competency evaluated.',
+              score: existingApp.matchScore,
+              breakdown: existingApp.breakdown,
+              matchedSkills: existingApp.matchedSkills || cand.skills.slice(0, 3),
+              missingSkills: existingApp.missingSkills || [],
+              explanation: existingApp.explanation || 'Competency evaluated.',
             }
           : {
-              score: 70,
-              breakdown: { skills: 70, experience: 70, education: 70, semantic: 70 },
+              score: null,
+              breakdown: null,
               matchedSkills: cand.skills.slice(0, 3),
               missingSkills: [],
               explanation: '',
@@ -157,20 +156,20 @@ export const ComparePage: React.FC = () => {
         candidate: item.candidate,
         score: item.match_score,
         breakdown: item.breakdown,
-        matchedSkills: item.matched_skills,
-        missingSkills: item.missing_skills,
+        matchedSkills: item.matched_skills || [],
+        missingSkills: item.missing_skills || [],
         explanation: 'Assessed against JD requirements',
         appId: undefined,
       }))
 
   // Find best value per metric for highlighting best in each row
-  const highestScore = Math.max(...evaluatedComparisons.map((c) => c.score), 0)
+  const highestScore = Math.max(...evaluatedComparisons.map((c) => c.score ?? 0), 0)
   const highestCgpa = Math.max(...selectedCandidates.map((c) => c.cgpa ?? 0), 0)
   const highestExp = Math.max(...selectedCandidates.map((c) => c.experienceYears ?? 0), 0)
   const mostSkillsMatched = Math.max(...evaluatedComparisons.map((c) => c.matchedSkills.length), 0)
 
   // Top overall recommendation pick
-  const topPick = evaluatedComparisons.slice().sort((a, b) => b.score - a.score)[0]
+  const topPick = evaluatedComparisons.slice().sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0]
 
   const handleAddCandidate = (candId: string) => {
     if (!candId) return
@@ -371,7 +370,7 @@ export const ComparePage: React.FC = () => {
                     <td key={candidate.id} className={`p-4 ${isBest ? 'bg-emerald-50/40' : ''}`}>
                       <div className="flex items-center gap-2">
                         <ScoreRing score={score} size="sm" />
-                        <span className="font-extrabold text-sm text-text">{score}/100</span>
+                        <span className="font-extrabold text-sm text-text">{score != null ? `${score}/100` : '-'}</span>
                         {isBest && (
                           <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold border border-emerald-300">
                             Best Fit

@@ -38,48 +38,46 @@ function loadTestData() {
 
       return {
         id: `job-${idx + 101}`,
-        companyId: 'company-nova',
+        company_id: 'company-nova',
         title,
         department: title.includes('Campus') ? 'Campus Relations' : 'Engineering',
         location: 'Bengaluru',
         type: 'Full-time',
-        jdText: content,
-        requirements: {
-          requiredSkills: title.includes('React')
-            ? ['React', 'TypeScript', 'Tailwind CSS', 'Redux']
-            : title.includes('Backend')
-            ? ['Python', 'FastAPI', 'PostgreSQL', 'Docker']
-            : title.includes('Data')
-            ? ['Python', 'SQL', 'Pandas', 'Spark']
-            : ['React', 'TypeScript', 'Node.js', 'Python', 'SQL'],
-          preferredSkills: ['Docker', 'AWS', 'Kubernetes', 'GraphQL'],
-          minExperience: title.includes('Campus') ? 0 : title.includes('Lead') || title.includes('Senior') ? 4 : 2,
-          minCgpa: 7.0,
-          gradYears: [2022, 2023, 2024],
-        },
-        status: 'Active',
-        createdAt: new Date(Date.now() - idx * 86400000).toISOString(),
+        jd_text: content,
+        required_skills: title.includes('React')
+          ? ['React', 'TypeScript', 'Tailwind CSS', 'Redux']
+          : title.includes('Backend')
+          ? ['Python', 'FastAPI', 'PostgreSQL', 'Docker']
+          : title.includes('Data')
+          ? ['Python', 'SQL', 'Pandas', 'Spark']
+          : ['React', 'TypeScript', 'Node.js', 'Python', 'SQL'],
+        preferred_skills: ['Docker', 'AWS', 'Kubernetes', 'GraphQL'],
+        min_experience: title.includes('Campus') ? 0 : title.includes('Lead') || title.includes('Senior') ? 4 : 2,
+        min_cgpa: 7.0,
+        grad_years: [2022, 2023, 2024],
+        status: 'active',
+        created_at: new Date(Date.now() - idx * 86400000).toISOString(),
+        applicant_count: 8 + (idx * 3),
       }
     })
   } else {
     jobsDb = [
       {
         id: 'job-101',
-        companyId: 'company-nova',
+        company_id: 'company-nova',
         title: 'Senior Full Stack Engineer',
         department: 'Engineering',
         location: 'Bengaluru',
         type: 'Full-time',
-        jdText: 'Looking for a Senior Full Stack Engineer proficient in React and Python.',
-        requirements: {
-          requiredSkills: ['React', 'TypeScript', 'Python', 'Node.js'],
-          preferredSkills: ['Docker', 'PostgreSQL', 'AWS'],
-          minExperience: 3,
-          minCgpa: 7.5,
-          gradYears: [2022, 2023, 2024],
-        },
-        status: 'Active',
-        createdAt: new Date().toISOString(),
+        jd_text: 'Looking for a Senior Full Stack Engineer proficient in React and Python.',
+        required_skills: ['React', 'TypeScript', 'Python', 'Node.js'],
+        preferred_skills: ['Docker', 'PostgreSQL', 'AWS'],
+        min_experience: 3,
+        min_cgpa: 7.5,
+        grad_years: [2022, 2023, 2024],
+        status: 'active',
+        created_at: new Date().toISOString(),
+        applicant_count: 12,
       },
     ]
   }
@@ -167,25 +165,40 @@ function loadTestData() {
     const job = jobsDb[idx % jobsDb.length] || jobsDb[0]
     const stages = ['applied', 'shortlisted', 'interview', 'offer', 'rejected']
     const stage = idx === 0 ? 'applied' : stages[idx % stages.length]
-    const score = 65 + ((idx * 17) % 32)
+    // One candidate has missing match_score and breakdown per spec (testing no invented values)
+    const isUnscored = idx === 4
+    const score = isUnscored ? null : 65 + ((idx * 17) % 32)
 
     return {
+      application_id: `app-${cand.id}`,
       id: `app-${cand.id}`,
       company_id: 'company-nova',
       job_id: job.id,
       candidate_id: cand.id,
       stage,
       match_score: score,
-      breakdown: {
-        skills: 80,
-        experience: 75,
-        education: 85,
-        semantic: score,
-      },
+      breakdown: isUnscored
+        ? null
+        : {
+            skills: 80,
+            experience: 75,
+            education: 85,
+            semantic: score,
+          },
       matched_skills: cand.skills.slice(0, 3),
       missing_skills: ['Kubernetes'],
-      explanation: `Candidate demonstrates solid competencies matching ${job.title}.`,
+      explanation: isUnscored
+        ? 'Application pending scoring assessment.'
+        : `Candidate demonstrates solid competencies matching ${job.title}.`,
       created_at: cand.created_at,
+      candidate: {
+        name: cand.name,
+        college: cand.college,
+        location: cand.location,
+        cgpa: cand.cgpa,
+        skills: cand.skills,
+        is_duplicate: Boolean(cand.is_duplicate),
+      },
     }
   })
 }
@@ -374,21 +387,20 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req)
       const newJob = {
         id: `job-${jobsDb.length + 101}`,
-        companyId: 'company-nova',
+        company_id: body.company_id || 'company-nova',
         title: body.title || 'New Job Posting',
         department: body.department || 'Engineering',
         location: body.location || 'Bengaluru',
         type: body.type || 'Full-time',
-        jdText: body.jdText || '',
-        requirements: body.requirements || {
-          requiredSkills: ['React', 'TypeScript'],
-          preferredSkills: ['Docker'],
-          minExperience: 2,
-          minCgpa: 7.0,
-          gradYears: [2024],
-        },
-        status: 'Active',
-        createdAt: new Date().toISOString(),
+        jd_text: body.jd_text || body.jdText || '',
+        required_skills: body.required_skills || body.requirements?.requiredSkills || ['React', 'TypeScript'],
+        preferred_skills: body.preferred_skills || body.requirements?.preferredSkills || ['Docker'],
+        min_experience: body.min_experience ?? body.requirements?.minExperience ?? 2,
+        min_cgpa: body.min_cgpa ?? body.requirements?.minCgpa ?? 7.0,
+        grad_years: body.grad_years || body.requirements?.gradYears || [2024],
+        status: body.status || 'active',
+        created_at: new Date().toISOString(),
+        applicant_count: 0,
       }
       jobsDb.push(newJob)
       return sendJson(res, 201, newJob)
@@ -410,7 +422,16 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'PATCH') {
       const body = await parseBody(req)
-      Object.assign(job, body)
+      if (body.title !== undefined) job.title = body.title
+      if (body.department !== undefined) job.department = body.department
+      if (body.location !== undefined) job.location = body.location
+      if (body.jd_text !== undefined) job.jd_text = body.jd_text
+      if (body.required_skills !== undefined) job.required_skills = body.required_skills
+      if (body.preferred_skills !== undefined) job.preferred_skills = body.preferred_skills
+      if (body.min_experience !== undefined) job.min_experience = body.min_experience
+      if (body.min_cgpa !== undefined) job.min_cgpa = body.min_cgpa
+      if (body.grad_years !== undefined) job.grad_years = body.grad_years
+      if (body.status !== undefined) job.status = body.status
       return sendJson(res, 200, job)
     }
   }
@@ -484,7 +505,7 @@ const server = http.createServer(async (req, res) => {
     const body = await parseBody(req)
     const targetStage = body.stage
 
-    const app = applicationsDb.find((a) => a.id === appId)
+    const app = applicationsDb.find((a) => a.application_id === appId || a.id === appId)
     const currentStage = app?.stage || 'applied'
 
     // SPEC REQUIREMENT: Include one invalid transition (400 with detail)

@@ -212,4 +212,91 @@ test.describe('Task 7: Live Mode & Stub Server Contract Tests', () => {
     await expect(page.getByTestId('blind-mode-banner')).toBeVisible()
     await expect(page.getByText(/^Candidate #/i).first()).toBeVisible()
   })
+
+  test('6. Unscored applications render "-" and no default "75" appears', async ({ page }) => {
+    await page.goto('/app/pipeline')
+    await expect(page.getByText('Recruitment Pipeline Kanban')).toBeVisible()
+
+    // In the stub server, the 5th application (Deepak Joshi) has match_score: null
+    const unscoredCard = page.locator('div.cursor-grab').filter({ hasText: 'Deepak Joshi' }).first()
+    await expect(unscoredCard).toBeVisible()
+
+    // Score ring inside this card must render "-"
+    await expect(unscoredCard.locator('[data-testid="score-ring"]')).toHaveText('-')
+
+    // Must NOT display invented default score "75" or "75%"
+    await expect(unscoredCard.getByText('75%')).not.toBeVisible()
+    await expect(unscoredCard.getByText('75')).not.toBeVisible()
+  })
+
+  test('7. Upload job dropdown shows an empty state when the API returns no jobs', async ({ page }) => {
+    // Intercept jobs API to return empty list
+    await page.route('**/api/jobs*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      })
+    })
+
+    await page.goto('/app/upload')
+
+    // EmptyState for jobs must be visible
+    const emptyJobsState = page.getByTestId('upload-no-jobs-empty-state')
+    await expect(emptyJobsState).toBeVisible()
+    await expect(emptyJobsState.getByText(/No job requisitions found/i)).toBeVisible()
+
+    // Dropdown contains only "Upload to talent pool" option
+    const jobSelect = page.getByTestId('upload-job-select')
+    await expect(jobSelect).toBeVisible()
+    const options = jobSelect.locator('option')
+    await expect(options).toHaveCount(1)
+    await expect(options.first()).toHaveText('Upload to talent pool')
+  })
+
+  test('8. Bulk upload request includes job_id form field in POST /resumes/bulk', async ({ page }) => {
+    await page.goto('/app/upload')
+
+    // Ensure jobs are loaded and select a specific job
+    const jobSelect = page.getByTestId('upload-job-select')
+    await expect(jobSelect).toBeVisible()
+    await expect(jobSelect.locator('option')).not.toHaveCount(1, { timeout: 10000 })
+    await jobSelect.selectOption('job-101')
+
+    // Upload a valid resume file
+    const fileInput = page.locator('input[type="file"]')
+    await fileInput.setInputFiles({
+      name: 'candidate_test_resume.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4 test resume content'),
+    })
+
+    await expect(page.getByText('candidate_test_resume.pdf')).toBeVisible()
+
+    // Setup request interception to verify multipart body contains job_id
+    let capturedJobId: string | null = null
+    await page.route('**/api/resumes/bulk', async (route) => {
+      const postData = route.request().postData() || ''
+      if (postData.includes('name="job_id"')) {
+        const match = postData.match(/name="job_id"\r?\n\r?\n([^\r\n]+)/)
+        capturedJobId = match ? match[1].trim() : 'present'
+      }
+      await route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          batch_id: 'batch-test-bulk-job',
+          total_files: 1,
+          status: 'processing',
+        }),
+      })
+    })
+
+    const parseBtn = page.getByRole('button', { name: /Parse All Queued/i })
+    await parseBtn.click()
+
+    // Wait until request finishes and verify captured job_id corresponds to the selected job (job-101)
+    await expect.poll(() => capturedJobId).toBeTruthy()
+    expect(capturedJobId).toBe('job-101')
+  })
 })

@@ -87,7 +87,7 @@
   - `npm run lint`: **0 errors** (`tsc --noEmit` & ESLint passing).
   - `npm run build`: Production bundle built cleanly with code splitting (~9.3s).
   - `npm run test`: **15 / 15 unit tests passing** (Vitest).
-  - `npm run test:e2e`: **51 / 51 end-to-end tests passing** (Playwright across 11 spec suites).
+  - `npm run test:e2e`: **61 / 61 end-to-end tests passing** (Playwright across 12 spec suites, including automated demo rehearsal).
   - Zero hardcoded `localhost` calls and zero exposed secrets in production bundle.
 - **Contract Stub vs. Live Backend Evaluation**:
   - *Stub mode proves:* UI routing, contract parameter conformance (`API.md`), stage transition constraints, URL filter persistence, blind mode masking, and component rendering resilience.

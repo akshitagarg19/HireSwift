@@ -16,6 +16,19 @@ The live application runs in a streamlined **single-tenant live demo** configura
 - Navigation sidebar includes: **Dashboard**, **Upload**, **Candidates**, **Jobs**, **Pipeline**, **Compare**, **Insights**, **Duplicates**, and **Emails**.
 - **Blind Mode**: Top-bar toggle masks candidate name ("Candidate #ID"), college, and location across Dashboard, Candidates, Ranking, Pipeline, Compare, and Candidate Drawer. Persisted across page reloads.
 
+### ⚡ 5-Command Quickstart
+
+Get HireSwift running locally in 5 commands:
+
+```bash
+git clone https://github.com/akshitagarg19/HireSwift.git
+cd HireSwift
+npm --prefix frontend install
+node frontend/tools/stub-server.mjs &
+npm --prefix frontend run dev
+```
+Open **[http://localhost:5173](http://localhost:5173)** in your browser.
+
 ---
 
 ## 🏛️ System Architecture
@@ -208,6 +221,27 @@ Located in `test-data/`:
 - `test-data/answer_key.csv`: Field-level ground truth across all 56 resumes.
 - `test-data/jd_answer_key.csv`: Target parsed competencies, requirements, and `hard_filter_pass_candidate_ids`.
 - `test-data/filter_tests.csv`: 14 known-answer candidate filter queries (F01–F14).
+
+---
+
+## 📊 Benchmark & Accuracy Metrics
+
+| Metric Category | Stub / Contract Status | Live Backend Benchmark (`qa/results-live.json`) |
+|---|---|---|
+| **Known-Answer Filters (F01–F14)** | **14 / 14 Passed (100%)** | *run live QA first (`QA_MODE=live QA_BASE_URL=<url> npm run qa`)* |
+| **Top 10 Field Extraction Accuracy** | Pre-curated ground truth | *run live QA first* |
+| **Deduplication Cluster Signals** | **6 / 6 Pairs Flagged** | *run live QA first* |
+| **Pipeline Transition Guardrails** | **100% Contract Validated** | *run live QA first* |
+| **Filter Query Latency (p50 / p95)** | In-memory (< 10 ms) | *run live QA first* |
+| **Frontend Render Performance** | **< 250 ms (1,000 synthetic pool)** | Validated across 60 Playwright tests |
+
+---
+
+## ⚠️ Known Limitations
+
+1. **Stub Server Fixture**: The local contract stub (`frontend/tools/stub-server.mjs`) is an in-memory fixture derived from `test-data/answer_key.csv`. It validates API contract compatibility, request schemas, and UI state resilience, but does not benchmark OCR accuracy or SQLite disk seek latency.
+2. **Backend Engine Dependency**: High-volume parsing, semantic vector embeddings, and fuzzy MinHash deduplication require connecting to Akshita's FastAPI service.
+3. **Mail Client BCC Chunking**: When launching local mail clients via `mailto:`, recipient lists are automatically chunked into batches of $\le 40$ emails to avoid OS command-line URI length restrictions.
 
 ---
 

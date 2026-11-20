@@ -11,6 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "verify:dist": "node ../scripts/verify-dist.mjs",
+    "demo:reset": "node ../scripts/demo-reset.mjs",
+    "release:check": "node ../scripts/release-check.mjs",
     "qa": "node ../qa/run.mjs",
     "qa:e2e": "playwright test e2e/qa-dataset.spec.ts"
   },

@@ -15,6 +15,8 @@
     "demo:reset": "node ../scripts/demo-reset.mjs",
     "release:check": "node ../scripts/release-check.mjs",
     "qa": "node ../qa/run.mjs",
+    "qa:smoke": "node ../qa/smoke-live.mjs",
+    "qa:live": "node ../qa/run.mjs --live",
     "qa:e2e": "playwright test e2e/qa-dataset.spec.ts"
   },
   "dependencies": {

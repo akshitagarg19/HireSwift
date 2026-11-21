@@ -11,6 +11,9 @@
     "test:e2e": "npm --prefix frontend run test:e2e",
     "verify:dist": "node scripts/verify-dist.mjs",
     "demo:reset": "node scripts/demo-reset.mjs",
-    "release:check": "node scripts/release-check.mjs"
+    "release:check": "node scripts/release-check.mjs",
+    "qa": "node qa/run.mjs",
+    "qa:smoke": "node qa/smoke-live.mjs",
+    "qa:live": "node qa/run.mjs --live"
   }
 }

@@ -162,3 +162,35 @@
   }
   ```
 - **Behavior**: Allow backward transition (e.g. `shortlisted` -> `applied`) if `reason` indicates an undo. If rejected with `400` or `409`, frontend displays server error and keeps card at server stage.
+
+---
+
+## 3. Transitions to Confirm (API.md vs. Stub Server)
+
+Below is a comparison of pipeline stage transitions between `API.md` (Section 5) and the local stub server fixture (`frontend/tools/stub-server.mjs`), with questions and differences to align upon for the live FastAPI backend:
+
+### Comparison Table
+
+| Current Stage | API.md Allowed Transitions | Stub Server Default (`validTransitions`) | Stub Server with `Undo` reason | Status / Agreement |
+|---|---|---|---|---|
+| **`applied`** | `shortlisted`, `rejected` | `shortlisted`, `rejected` | `shortlisted`, `rejected` | ✅ Identical |
+| **`shortlisted`** | `interview`, `rejected` | `interview`, `rejected` | `interview`, `rejected`, **`applied`** | ⚠️ Reverting to `applied` allowed on Undo in stub, but rejected by API.md transition rules |
+| **`interview`** | `offer`, `rejected` | `offer`, `rejected` | `offer`, `rejected`, **`shortlisted`**, **`applied`** | ⚠️ Reverting to `shortlisted` allowed on Undo in stub, but rejected by API.md transition rules |
+| **`offer`** | `rejected`, `applied` (re-evaluation) | `rejected`, `applied` | Any stage | ⚠️ Both allow jumping all the way back to `applied`, but skip `interview` |
+| **`rejected`** | `applied` (reopened) | `applied` | Any stage | ⚠️ Both allow reopening to `applied`, but skip `shortlisted` or `interview` |
+
+### Differences & Questions to Confirm with Backend:
+
+1. **`offer -> applied` (Re-evaluation vs. Demotion)**:
+   - *Current Spec (API.md & Stub)*: Allows `offer -> applied` and `offer -> rejected`.
+   - *Question for Backend*: If an offer is declined or revoked, should the candidate jump all the way back to `applied` (re-evaluation from scratch), or should moving back to `interview` also be allowed?
+2. **`rejected -> applied` (Reopening Candidates)**:
+   - *Current Spec (API.md & Stub)*: Allows `rejected -> applied` for reopening.
+   - *Question for Backend*: Can a mistakenly rejected candidate be moved directly back to their prior stage (e.g. `rejected -> interview` or `rejected -> shortlisted`), or does reopening strictly reset them to `applied`?
+3. **Backward "Undo" Transitions (`shortlisted -> applied`, `interview -> shortlisted`)**:
+   - *Current Spec (API.md)*: Prohibits backward moves (`Invalid stage transition: Cannot jump directly...`).
+   - *Stub Behavior*: When `reason` contains `"undo"` or `"revert"`, the stub permits the reversal unless `STUB_STRICT_TRANSITIONS=1` is set.
+   - *Live Requirement*: If the backend rejects backward moves with `400 Bad Request` or `409 Conflict`, the frontend displays the server error detail and refetches `GET /applications` to preserve server authority. Does the backend plan to support an `Undo` window or transition rollback?
+4. **Direct Jumps (Skip Stages)**:
+   - *Current Spec*: Both API.md and the stub reject skipping stages (e.g. `applied -> interview` or `applied -> offer` returns `400 Bad Request`).
+   - *Status*: Aligned.

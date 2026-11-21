@@ -177,6 +177,19 @@ HireSwift includes a comprehensive QA automation harness and ground-truth benchm
 - **Stub Mode (`QA_MODE=stub`)**: Serves pre-curated ground truth from `test-data/answer_key.csv`. Strictly validates frontend UI rendering, navigation routes, API parameter schemas, empty/error state handling, and contract conformance. It does NOT evaluate backend parser accuracy or database filter latency.
 - **Live Mode (`QA_MODE=live`)**: Connects to the real FastAPI backend. Evaluates actual PDF/DOCX parser extraction accuracy, OCR quality, live database filter query latency, MinHash/clustering deduplication, and model ranking consistency against the ground-truth benchmark.
 
+### When the backend is ready
+Run the live smoke check and live QA harness with one command:
+
+```bash
+# 1. Quick Live Smoke Check (validates /health, /candidates?page_size=1, /jobs, /applications)
+QA_BASE_URL=https://<backend-url>/api npm run qa:smoke
+
+# 2. Complete Live Ground-Truth QA Harness (Parser, Filters, Ranking, Deduplication)
+QA_BASE_URL=https://<backend-url>/api npm run qa:live
+```
+
+> **Note**: Both commands require `QA_BASE_URL` in the environment. Running them without `QA_BASE_URL` prints a clear error message with usage instructions instead of crashing.
+
 ### 1. Automated Ground-Truth QA Harness (`qa/run.mjs`)
 Validates all 6 core recruiting engines (Resume Upload & Edge Cases, Parser Accuracy, 14 Filter Tests F01–F14, JD Parsing & Top-15 Ranking, Deduplication Recall & Precision, Pipeline Transitions & Compare Limits).
 

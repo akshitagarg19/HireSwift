@@ -1,4 +1,10 @@
 import { test, expect } from '@playwright/test'
+import { spawn } from 'child_process'
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 
 test.describe('Task 5: E2E Tests for Real Live Actions & Contract Hardening', () => {
   test.beforeEach(async ({ page }) => {
@@ -400,39 +406,91 @@ test.describe('Task 5: E2E Tests for Real Live Actions & Contract Hardening', ()
     expect(moveCount).toBeGreaterThanOrEqual(2)
   })
 
-  test('10. Kanban Undo with STUB_STRICT_TRANSITIONS=1: server rejects backward move (400), card stays where server says', async ({ page }) => {
-    await page.goto('/app/pipeline')
-    await expect(page.getByText('Recruitment Pipeline Kanban')).toBeVisible()
-
-    // Route move requests with reason: "undo" to pass x-stub-strict-transitions header
-    await page.route('**/api/applications/*/move', async (route) => {
-      const postData = route.request().postDataJSON()
-      if (postData && postData.reason && /undo/i.test(postData.reason)) {
-        const headers = {
-          ...route.request().headers(),
-          'x-stub-strict-transitions': '1',
-        }
-        await route.continue({ headers })
-      } else {
-        await route.continue()
-      }
+  test('10. Kanban Undo with STUB_STRICT_TRANSITIONS=1: starts stub with strict transitions, rejects backward move (400), card refetched and no success toast', async ({ page }) => {
+    const strictPort = 8098
+    const stubScript = path.resolve(__dirname, '../tools/stub-server.mjs')
+    const stubProcess = spawn('node', [stubScript], {
+      env: { ...process.env, PORT: String(strictPort), STUB_STRICT_TRANSITIONS: '1' },
+      stdio: 'pipe',
     })
 
-    // Move first card to shortlisted
-    const moveSelect = page.getByTestId('kanban-move-select').first()
-    await expect(moveSelect).toBeVisible({ timeout: 10000 })
-    await moveSelect.selectOption('shortlisted')
+    try {
+      // Wait for strict stub server to be healthy
+      let healthy = false
+      for (let i = 0; i < 25; i++) {
+        try {
+          const res = await fetch(`http://127.0.0.1:${strictPort}/health`)
+          if (res.ok) {
+            healthy = true
+            break
+          }
+        } catch {
+          await new Promise((r) => setTimeout(r, 200))
+        }
+      }
+      expect(healthy).toBe(true)
 
-    // Undo toast appears
-    const undoBtn = page.getByRole('button', { name: 'Undo' })
-    await expect(undoBtn).toBeVisible({ timeout: 8000 })
-    await undoBtn.click()
+      // Route API requests on this page to the strict stub instance (exclude source code like /src/api/)
+      await page.route(
+        (url) => url.pathname.startsWith('/api/'),
+        async (route) => {
+          const req = route.request()
+          const url = new URL(req.url())
+          const targetUrl = `http://127.0.0.1:${strictPort}${url.pathname}${url.search}`
+          try {
+            const res = await fetch(targetUrl, {
+              method: req.method(),
+              headers: {
+                'Content-Type': req.headers()['content-type'] || 'application/json',
+                Accept: 'application/json',
+              },
+              body: req.method() !== 'GET' && req.method() !== 'HEAD' ? req.postData() : undefined,
+            })
+            const bodyText = await res.text()
+            await route.fulfill({
+              status: res.status,
+              contentType: 'application/json',
+              body: bodyText,
+            })
+          } catch (err) {
+            console.error('ROUTING ERROR:', err)
+            await route.continue()
+          }
+        }
+      )
 
-    // Assert that server's rejection error is displayed
-    await expect(page.getByText(/Invalid stage transition: Cannot jump directly from 'shortlisted' to 'applied'/i)).toBeVisible()
+      await page.goto('/app/pipeline')
+      await expect(page.getByText('Recruitment Pipeline Kanban')).toBeVisible()
 
-    // And card stays in Shortlisted column (not reverted to Applied)
-    const shortlistedColumn = page.locator('[data-testid="kanban-column-shortlisted"]')
-    await expect(shortlistedColumn.locator('[data-testid="kanban-card"]').first()).toBeVisible()
+      // 1. Move first card applied -> shortlisted
+      const moveSelect = page.getByTestId('kanban-move-select').first()
+      await expect(moveSelect).toBeVisible({ timeout: 10000 })
+      await moveSelect.selectOption('shortlisted')
+
+      // 2. Undo toast appears
+      const undoToast = page.getByText(/Moved .* to Shortlisted\./i)
+      await expect(undoToast).toBeVisible({ timeout: 8000 })
+
+      // 3. Click Undo
+      const undoBtn = page.getByRole('button', { name: 'Undo' })
+      await expect(undoBtn).toBeVisible()
+      await undoBtn.click()
+
+      // 4. Assert: server's error message is shown
+      await expect(
+        page.getByText(/Invalid stage transition: Cannot jump directly from 'shortlisted' to 'applied'/i)
+      ).toBeVisible()
+
+      // 5. Assert: card is refetched into the column the server reports (Shortlisted)
+      const shortlistedColumn = page.locator('[data-testid="kanban-column-shortlisted"]')
+      await expect(shortlistedColumn.locator('[data-testid="kanban-card"]').first()).toBeVisible()
+
+      // 6. Assert: no success toast appears
+      await expect(page.getByText(/Reverted .* back to/i)).toHaveCount(0)
+    } finally {
+      try {
+        stubProcess.kill()
+      } catch {}
+    }
   })
 })

@@ -26,8 +26,17 @@ import {
   compareSkills,
 } from './lib.mjs'
 
-const QA_MODE = process.env.QA_MODE || 'stub'
-let BASE_URL = process.env.QA_BASE_URL || (QA_MODE === 'stub' ? 'http://127.0.0.1:8000/api' : 'http://127.0.0.1:8000/api')
+const isLiveArg = process.argv.includes('--live')
+const QA_MODE = isLiveArg ? 'live' : (process.env.QA_MODE || 'stub')
+
+if (QA_MODE === 'live' && (!process.env.QA_BASE_URL || !process.env.QA_BASE_URL.trim())) {
+  console.error('\n❌ ERROR: QA_BASE_URL environment variable is required when running in live mode.')
+  console.error('Usage:')
+  console.error('  QA_BASE_URL=https://<your-backend>.onrender.com/api npm run qa:live\n')
+  process.exit(1)
+}
+
+let BASE_URL = process.env.QA_BASE_URL || 'http://127.0.0.1:8000/api'
 // Remove trailing slash if present
 BASE_URL = BASE_URL.replace(/\/+$/, '')
 

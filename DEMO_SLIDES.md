@@ -106,22 +106,29 @@
    - Landing on `/app/dashboard`: Live hiring KPIs (Total Candidates, Active Jobs, In Pipeline, Shortlisted).
    - Global search: Search `"Python"` or `"Sharma"` with 300ms debounce; click dropdown result to open drawer immediately.
    - Quick Compare: Check 2 candidates from Top 10 ranking table and click **"Compare (2)"**.
-2. **Minute 0:40–1:15 | Bulk Ingestion & Validation**:
-   - Navigate to `/app/upload`: Link to open job requisition or upload to talent pool.
+   - Keyboard Shortcuts: Press `?` to open the cheat sheet modal (`/` search, `g c`, `g p`, `g d`).
+2. **Minute 0:40–1:10 | Bulk Ingestion & Validation**:
+   - Navigate to `/app/upload`: Link to open job requisition via `job_id` or upload to talent pool.
    - Ingest batch from `test-data/resumes/`: Real-time progress bar, failure isolation for corrupted/0-byte files, and **"View candidates"** CTA.
-3. **Minute 1:15–2:00 | Multi-Mode Smart Filters & Explainable Drawer**:
+3. **Minute 1:10–1:55 | Multi-Mode Filters, Bulk Shortlist & Document Viewer**:
    - Navigate to `/app/candidates`: Demonstrate tri-state skill chips (AND emerald, OR indigo, NOT rose).
    - Known-answer query F09: Noida, Python (AND), CGPA >= 7.5, Exp >= 2 -> Exactly 5 candidates.
-   - Candidate Drawer: Score breakdown, matched skills, learn hints, and `<mark>` highlighted resume text.
+   - Bulk Shortlist: Select candidates, pick target requisition from bulk bar dropdown, fire concurrent moves (concurrency 5).
+   - Ground-Truth CSV Export: Clean export with empty cells for missing values (never `0` or `75`).
+   - Candidate Drawer & Resume Viewer: Embedded PDF preview (`<object>`) or DOCX download with side-by-side low-confidence indicators.
    - Toggle **Blind Mode**: Instant masking of name, college, location across the UI.
-4. **Minute 2:00–2:35 | Jobs, Ranking & Skill-Gap Analytics**:
+4. **Minute 1:55–2:30 | Jobs, Ranking, Custom Weights & Re-Match**:
    - Navigate to `/app/jobs`: Ranked candidates strictly descending by match score.
+   - Custom Weight Sliders: Debounced (300ms) query params to ranking call; server fallback notice banner if unhandled.
+   - Talent Pool Re-Match: Instant semantic refresh from server.
    - Competency breakdown popovers and Talent Pool Skill Gap analytics.
-5. **Minute 2:35–3:15 | 5-Stage Kanban Pipeline & Guardrails**:
-   - Navigate to `/app/pipeline`: 5 stages with embedded candidate summaries.
+5. **Minute 2:30–3:05 | 5-Stage Kanban Pipeline & 8-Second Undo**:
+   - Navigate to `/app/pipeline`: 5 stages with embedded candidate summaries and 50-card column pagination.
    - Drag illegal move (Applied -> Offer): Immediate snap-back with server error toast.
-   - Move Applied -> Shortlisted: Persisted state update.
-6. **Minute 3:15–3:45 | Bulk Email Outreach**:
+   - Valid move (Applied -> Shortlisted): Smooth transition with **8-second Undo toast** to revert stage.
+   - Export Shortlisted: Download targeted shortlist CSV.
+6. **Minute 3:05–3:35 | Bulk Email Outreach**:
    - Navigate to `/app/emails`: Pre-filtered shortlisted candidates, template variable interpolation (`{{candidate_name}}`), live preview, confirmation modal, and audit log.
-7. **Minute 3:45–4:00 | Duplicate Resolution & Wrap-Up**:
-   - Navigate to `/app/duplicates`: Signal breakdown and side-by-side diff merge.
+   - Zero-dependency fallbacks: Copy emails, mailto BCC chunking, recipient CSV.
+7. **Minute 3:35–4:00 | Duplicate Resolution & Wrap-Up**:
+   - Navigate to `/app/duplicates`: Signal breakdown, side-by-side diff viewer, 1-click merge (or server fallback notice), and local actions labeled "Saved on this device only".

@@ -1,6 +1,6 @@
 # HireSwift ATS Quality Assurance & Verification Report
 
-> **Execution Timestamp:** 2026-11-20T12:05:39.933Z  
+> **Execution Timestamp:** 2026-11-21T06:03:01.893Z  
 > **Evaluation Mode:** `STUB`  
 > **Target Base URL:** `http://127.0.0.1:8000/api`  
 > **Dataset:** 56 resumes (50 unique candidates + 6 duplicate files), 5 JDs, 3 edge cases, 14 canonical filter test cases.
@@ -128,51 +128,28 @@
 - **Contract Parameter Conformance:** The frontend generates exact API query parameters conforming to `API.md` (`cgpa_min`, `tenth_min`, `twelfth_min`, `skills_all`, `skills_any`, `skills_none`, `exp_min`, `exp_max`, `city`, `grad_year`, `q`, `include_unknown`, `sort`, `page`, `page_size`).
 - **Data Mapping Robustness:** Zod mappers in `src/api/mappers.ts` and `src/api/jobMapper.ts` seamlessly convert backend `snake_case` payloads to camelCase UI models without data loss.
 - **Missing / Null Data Resilience:** Missing numeric metrics render as `-` with amber low-confidence styling; missing scores render as `-` with empty score rings, never defaulting to invented values like `75` or `0`.
-- **Scope & Navigation Guards:** In live mode, authentication, company switcher, onboarding, careers, and fairness routes are disabled and cleanly redirect to `/app/dashboard`. The recruiter dashboard is enabled (`enableDashboard: true`) as the primary landing page.
-- **Blind Mode Masking:** The persistent top-bar blind mode toggle successfully masks candidate names (`Candidate #ID`), colleges, and locations across Dashboard, Candidates, Drawer, Pipeline, Compare, and Job Ranking.
-- **Store Isolation:** The Zustand store holds UI state only (blind mode, drawers, selections); store seed data is completely ignored in live mode, verified by Playwright tests asserting poisoned localStorage never leaks into the DOM.
+- **Scope & Navigation Guards:** In live mode, authentication, company switcher, onboarding, careers, fairness, and dashboard routes are disabled and cleanly redirect to `/app/candidates`.
+- **Blind Mode Masking:** The persistent top-bar blind mode toggle successfully masks candidate names (`Candidate #ID`), colleges, and locations across Candidates, Drawer, Pipeline, Compare, and Job Ranking.
+- **Store Isolation:** The Zustand store holds UI state only; store seed data is completely ignored in live mode, verified by Playwright tests asserting poisoned localStorage never leaks into the DOM.
 
-### What Stub Mode PROVES vs. What It DOES NOT PROVE:
-
-| Category | What Stub Mode PROVES | What Stub Mode DOES NOT PROVE |
-|---|---|---|
-| **API Contract & Schemas** | Strict conformance to `API.md` snake_case endpoints, field schemas, query parameters, and Zod transformations. | Real backend model parameters or server-side DB optimizations. |
-| **Pipeline State Machine** | Stage transition constraints (`applied` ↔ `shortlisted` ↔ `interview` → `offer` / `rejected`), 400 Bad Request handling, and UI snap-back. | Real database ACID transaction rollbacks under concurrent multi-user load. |
-| **UI Responsiveness & Scale** | Sub-250ms rendering, smooth 60fps Kanban drag-and-drop, debounced filters, and scale pagination up to 1,000 synthetic candidates. | Server-side database index seek latency or disk I/O under load (in-memory fixture). |
-| **Data Masking & Privacy** | Instant blind mode anonymization across all pages (names, colleges, locations) with persistent localStorage state. | Third-party compliance audit or production RBAC/SSO token validation. |
-| **Parsing & OCR Accuracy** | Frontend handles unparsed or missing fields gracefully (`-` with amber badge; empty score rings). | **Parser extraction accuracy** on scanned/complex PDFs, OCR quality, or layout understanding (ground truth is pre-loaded). |
-| **Deduplication Logic** | UI diff viewer, duplicate clustering signals, and 1-click merge payload construction. | **Real algorithmic deduplication** (MinHash, LSH, embedding cosine distance) across millions of uncurated resumes. |
-| **Ranking Quality** | Client-side ranking tables correctly reflect weighted component scores and sort orders. | **Real ML semantic ranking** or fine-tuned LLM resume-to-JD embeddings. |
+### What Stub Mode DOES NOT PROVE:
+- **Parser Accuracy & Extraction Quality:** The stub server loads pre-curated ground truth from CSV; it does not test OCR text extraction or NLP parsing.
+- **OCR Quality on Complex Layouts:** Real CV layouts (multi-column, graphic resumes) require running against Akshita's backend service.
+- **Real Database Filter Latency:** In-memory array filtering does not reflect database index performance or server-side network round-trips.
+- **ML / Algorithmic Deduplication Accuracy:** The stub maps duplicates directly from the ground-truth `dup_of` column rather than computing byte-hashes, MinHash/LSH, or embeddings.
+- **Real Model Ranking Quality:** Semantic match scores require the live backend's scoring model.
 
 ### Contract Verification Summary:
 | Contract Verification Item | Target Spec | Verification Status | Evidence |
 |---|---|---|---|
-| **Recruiter Dashboard Contract** | `/app/dashboard` | ✅ Verified | Reads KPIs, search, ranking, funnel, and skill gap via `api.*` |
 | **Bulk Resume Ingestion Contract** | `POST /resumes/bulk` | ✅ Verified | Rejects corrupted/0-byte/txt files with informative JSON |
 | **Server-Driven Filter Queries (F01–F14)** | `GET /candidates` | ✅ Verified | 14/14 queries match expected candidate sets exactly |
 | **Job Ranking & Match Scores** | `GET /jobs/{id}/ranking` | ✅ Verified | Hard-filter qualifiers score higher; monotonic descent |
 | **Deduplication Cluster Signals** | `GET /candidates` | ✅ Verified | 6/6 duplicate pairs identified with duplicate group IDs |
 | **Pipeline Stage Transitions** | `PATCH /applications/{id}/stage` | ✅ Verified | Allowed transitions persist; invalid transitions return 400 |
 | **Candidate Comparison Matrix** | `GET /compare` | ✅ Verified | 2–3 candidates accepted; 1 or 4+ rejected with 400 |
-| **Bulk Email Outreach Contract** | `POST /email/send` | ✅ Verified | Pre-filters shortlisted, live preview, dispatch confirmation, fallback |
 | **Store Seed Data Isolation** | Live Mode UI | ✅ Verified | Poisoned localStorage never renders in live mode |
-| **Blind Mode Data Masking** | Blind Mode Toggle | ✅ Verified | Masks name, college, location across 6 views |
-
----
-
-## 8.1 Frontend Rendering Benchmarks (Stub, Synthetic Data Scale)
-
-> Measured via automated Playwright benchmark test suite (`frontend/e2e/scale.spec.ts`) under simulated 1,000 synthetic candidate scale.  
-> **Test Environment:** Windows 11, Intel Core i7, Chromium 128 / Playwright v1.47+.
-
-| UI Scenario / Measurement | Measured Timing | Performance SLA | Verification Status |
-|---|---|---|---|
-| **First render of Dashboard (`/app/dashboard`)** | **~770 ms initial / < 50 ms re-render** | < 1,000 ms initial | ✅ PASS |
-| **First render of Candidates Directory (`/app/candidates`)** | **~277 ms initial / < 50 ms re-render** | < 500 ms initial | ✅ PASS |
-| **Filter change to rendered rows (e.g. F09 query)** | **~390 ms total** (300 ms debounce + API; DOM render < 40 ms) | < 500 ms total | ✅ PASS |
-| **Page size switch (25 -> 50 -> 100 rows)** | **< 120 ms DOM update** | < 300 ms | ✅ PASS |
-| **Pipeline Kanban Column Pagination (50 cards)** | **< 60 ms load more (+50)** | < 100 ms | ✅ PASS |
-| **Global Recruiter Search Dropdown** | **< 45 ms render after debounce** | < 150 ms | ✅ PASS |
+| **Blind Mode Data Masking** | Blind Mode Toggle | ✅ Verified | Masks name, college, location across 5 views |
 
 ---
 
@@ -226,7 +203,7 @@
 | `SignupPage.tsx` | `registerCompany` | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |
 | `OnboardingPage.tsx` | `currentCompanyId`, `companies`, ... | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |
 | `SettingsPage.tsx` | `currentCompanyId`, `currentUser`, ... | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |
-| `DashboardPage.tsx` | `isBlindMode` | `api.getJobs()`, `api.getApplications()`, `api.getCandidates({ page_size: 1 })`, `api.getJobRanking()`, `api.getJobSkillGap()` | ✅ Yes (Executive landing page; zero store data reads; blind mode UI only) |
+| `DashboardPage.tsx` | `currentCompanyId`, `companies`, ... | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |
 | `FairnessPage.tsx` | `currentCompanyId`, `companies`, ... | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |
 | `CareersPage.tsx` | `companies`, `jobs` | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |
 | `JobApplicationPage.tsx` | `companies`, `jobs`, ... | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |

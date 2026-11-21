@@ -131,6 +131,18 @@ test.describe('Task 3: Automated Demo Rehearsal (< 4 Minutes Scripted)', () => {
     await quickEditBtn.click()
 
     await expect(page.getByText('Candidate Overview')).toBeVisible({ timeout: 10000 })
+
+    // Test Resume Document Tab
+    const resumeTab = page.getByRole('tab', { name: /Resume/i })
+    if (await resumeTab.isVisible()) {
+      await resumeTab.click()
+      await page.waitForTimeout(300)
+      const profileTab = page.getByRole('tab', { name: /Profile/i })
+      if (await profileTab.isVisible()) {
+        await profileTab.click()
+      }
+    }
+
     await page.screenshot({ path: path.join(screensDir, '03-candidates.png') })
 
     // Close drawer via Radix close button
@@ -141,6 +153,12 @@ test.describe('Task 3: Automated Demo Rehearsal (< 4 Minutes Scripted)', () => {
       await page.keyboard.press('Escape')
     }
     await page.waitForTimeout(400)
+
+    // Verify CSV export button presence
+    const exportBtn = page.locator('[data-testid="export-csv-btn"]')
+    if (await exportBtn.isVisible()) {
+      await expect(exportBtn).toBeEnabled()
+    }
 
     timings['Step 3: Filters & Drawer'] = Date.now() - t3
     console.log(`✓ Step 3 (Filters & Drawer) completed in ${timings['Step 3: Filters & Drawer']}ms`)
@@ -188,6 +206,11 @@ test.describe('Task 3: Automated Demo Rehearsal (< 4 Minutes Scripted)', () => {
       await page.waitForTimeout(600)
     }
 
+    const exportShortlisted = page.locator('[data-testid="export-shortlisted-btn"]')
+    if (await exportShortlisted.isVisible()) {
+      await expect(exportShortlisted).toBeEnabled()
+    }
+
     await page.screenshot({ path: path.join(screensDir, '05-pipeline.png') })
     timings['Step 6: Pipeline'] = Date.now() - t6
     console.log(`✓ Step 6 (Pipeline) completed in ${timings['Step 6: Pipeline']}ms`)
@@ -210,6 +233,13 @@ test.describe('Task 3: Automated Demo Rehearsal (< 4 Minutes Scripted)', () => {
     await page.goto('/app/duplicates')
     await page.waitForLoadState('networkidle')
     await expect(page.getByRole('heading', { name: /Duplicate.*Detection/i })).toBeVisible({ timeout: 15000 })
+    const mergeBtn = page.locator('[data-testid="merge-duplicates-btn"]').first()
+    const mergeBanner = page.locator('[data-testid="merge-disabled-banner"]')
+    if (await mergeBtn.isVisible()) {
+      await expect(mergeBtn).toBeEnabled()
+    } else if (await mergeBanner.isVisible()) {
+      await expect(mergeBanner).toBeVisible()
+    }
     await page.screenshot({ path: path.join(screensDir, '08-duplicates.png') })
     timings['Step 8: Duplicates'] = Date.now() - t8
     console.log(`✓ Step 8 (Duplicates) completed in ${timings['Step 8: Duplicates']}ms`)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAppStore } from '@/store'
 import { api, USE_MOCK } from '@/api'
@@ -26,6 +26,7 @@ import {
   Edit2,
   Info,
   X,
+  AlertTriangle,
 } from 'lucide-react'
 import { JobRankingCandidate, SkillGapItem } from '@/api'
 import { Job } from '@/types'
@@ -111,6 +112,7 @@ export const JobDetailPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('ranked')
   const [isRematching, setIsRematching] = useState(false)
   const [showWeightPanel, setShowWeightPanel] = useState(false)
+  const [weightsIgnoredByServer, setWeightsIgnoredByServer] = useState(false)
 
   // Editable requirements state
   const [isEditingReqs, setIsEditingReqs] = useState(false)
@@ -122,6 +124,47 @@ export const JobDetailPage: React.FC = () => {
 
   // Expanded candidate breakdown popover ID
   const [expandedBreakdownId, setExpandedBreakdownId] = useState<string | null>(null)
+
+  const isInitialMount = useRef(true)
+
+  // Debounce slider changes (300ms) and send custom weights query parameters
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+    if (!job?.id) return
+
+    const timer = setTimeout(async () => {
+      try {
+        const queryWeights = {
+          weights_skills: Number((weights.skills / 100).toFixed(2)),
+          weights_experience: Number((weights.experience / 100).toFixed(2)),
+          weights_education: Number((weights.education / 100).toFixed(2)),
+          weights_semantic: Number((weights.semantic / 100).toFixed(2)),
+        }
+        const res = await api.getJobRanking(job.id, queryWeights)
+        setRankingData(res.candidates)
+
+        const applied = res.weights_applied
+        if (!applied) {
+          setWeightsIgnoredByServer(true)
+        } else {
+          const matchSkills = Math.abs((applied.skills ?? 0) - queryWeights.weights_skills) < 0.05
+          const matchExp = Math.abs((applied.experience ?? 0) - queryWeights.weights_experience) < 0.05
+          if (matchSkills && matchExp) {
+            setWeightsIgnoredByServer(false)
+          } else {
+            setWeightsIgnoredByServer(true)
+          }
+        }
+      } catch {
+        // preserve current ranking on error
+      }
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [weights, job?.id])
 
   if (loading) {
     return (
@@ -158,18 +201,33 @@ export const JobDetailPage: React.FC = () => {
     updateJob(job.id, {
       scoringWeights: updated,
     })
-    api.getJobRanking(job.id).then((res) => setRankingData(res.candidates))
   }
 
-  const handleRematch = () => {
+  const handleRematch = async () => {
+    if (!job?.id) return
     setIsRematching(true)
-    setTimeout(() => {
-      rematchTalentPool(job.id)
-      api.getJobRanking(job.id).then((res) => setRankingData(res.candidates))
-      api.getJobSkillGap(job.id).then((res) => setSkillGapData(res.skills))
+    try {
+      if (!USE_MOCK) {
+        try {
+          await api.rematchJob(job.id)
+        } catch {
+          // If server lacks rematch endpoint, fallback to refreshing rankings
+        }
+      } else {
+        rematchTalentPool(job.id)
+      }
+      const [rankingRes, skillGapRes] = await Promise.all([
+        api.getJobRanking(job.id),
+        api.getJobSkillGap(job.id),
+      ])
+      setRankingData(rankingRes.candidates)
+      setSkillGapData(skillGapRes.skills)
+      toast.success('Ranking refreshed from the server')
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to refresh ranking.')
+    } finally {
       setIsRematching(false)
-      toast.success('Successfully scored entire talent pool against this job!')
-    }, 400)
+    }
   }
 
   const handleShortlist = (appId: string, candidateName: string) => {
@@ -343,6 +401,16 @@ export const JobDetailPage: React.FC = () => {
               />
             </div>
           </div>
+
+          {weightsIgnoredByServer && (
+            <div
+              className="p-3 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 flex items-center gap-2"
+              data-testid="weights-ignored-notice"
+            >
+              <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>This server ignored custom weights; ranking is unchanged.</span>
+            </div>
+          )}
         </div>
       )}
 

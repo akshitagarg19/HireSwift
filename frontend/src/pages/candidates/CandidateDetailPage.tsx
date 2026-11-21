@@ -34,6 +34,8 @@ import { matchScore } from '@/lib/scoring'
 import { getSkillLearnHint } from '@/lib/skillHints'
 import { isReadOnlyViewer } from '@/lib/permissions'
 import { DEFAULT_DEMO_COMPANY } from '@/types'
+import { ResumeViewer } from '@/components/ResumeViewer'
+import { ScorecardPayload, ScorecardRecord } from '@/api'
 
 export const CandidateDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -77,17 +79,18 @@ export const CandidateDetailPage: React.FC = () => {
       const candApps = aList.filter((a) => a.candidateId === id || (a as any).candidate_id === id)
       setLiveApplications(candApps)
 
-      if (candApps.length > 0 && !selectedJobId) {
-        setSelectedJobId(candApps[0].jobId)
-      } else if (jList.length > 0 && !selectedJobId) {
-        setSelectedJobId(jList[0].id)
-      }
+      setSelectedJobId((curr) => {
+        if (curr) return curr
+        if (candApps.length > 0) return candApps[0].jobId
+        if (jList.length > 0) return jList[0].id
+        return ''
+      })
     } catch (err: any) {
       setError(err.message || 'Failed to load candidate.')
     } finally {
       setIsLoadingCand(false)
     }
-  }, [id, selectedJobId])
+  }, [id])
 
   useEffect(() => {
     fetchCandidate()
@@ -127,11 +130,31 @@ export const CandidateDetailPage: React.FC = () => {
   const [editCustomFields, setEditCustomFields] = useState<Record<string, any>>({})
 
   // Scorecard evaluation state
-  const [scorecardRating, setScorecardRating] = useState(4)
+  const [serverScorecards, setServerScorecards] = useState<ScorecardRecord[]>([])
+  const [interviewerName, setInterviewerName] = useState('')
   const [scorecardRecommendation, setScorecardRecommendation] = useState<
     'Strong Yes' | 'Yes' | 'Neutral' | 'No' | 'Strong No'
   >('Yes')
+  const [techRating, setTechRating] = useState(4)
+  const [techNotes, setTechNotes] = useState('')
+  const [problemRating, setProblemRating] = useState(4)
+  const [problemNotes, setProblemNotes] = useState('')
+  const [commRating, setCommRating] = useState(4)
+  const [commNotes, setCommNotes] = useState('')
   const [scorecardNotes, setScorecardNotes] = useState('')
+  const [isSubmittingScorecard, setIsSubmittingScorecard] = useState(false)
+
+  // Active job and application for matching
+  const activeJob = companyJobs.find((j) => j.id === selectedJobId)
+  const activeApp = candidateApps.find((a) => a.jobId === selectedJobId)
+
+  // Fetch scorecards for active application in live mode
+  useEffect(() => {
+    if (!activeApp?.id || USE_MOCK) return
+    api.getScorecards(activeApp.id)
+      .then(setServerScorecards)
+      .catch(() => {})
+  }, [activeApp?.id])
 
   if (isLoadingCand) {
     return (
@@ -160,12 +183,8 @@ export const CandidateDetailPage: React.FC = () => {
     )
   }
 
-  // Active job and application for matching
-  const activeJob = companyJobs.find((j) => j.id === selectedJobId)
-  const activeApp = candidateApps.find((a) => a.jobId === selectedJobId)
-
   // Recompute score live if activeApp not yet created or for selected job
-  const evaluatedMatch = activeJob
+  const evaluatedMatch = (activeJob && candidate)
     ? matchScore(candidate, activeJob, company.settings.scoringWeights, company.settings.skillSynonyms)
     : null
 
@@ -244,23 +263,73 @@ export const CandidateDetailPage: React.FC = () => {
     setIsEditing(true)
   }
 
-  const handleSubmitScorecard = (e: React.FormEvent) => {
+  const handleSubmitScorecard = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!activeApp) return
+    if (!activeApp) {
+      toast.error('No active application found for this job.')
+      return
+    }
 
-    addScorecard(activeApp.id, {
-      interviewerName: currentUser?.name || 'Evaluator',
-      overallRecommendation: scorecardRecommendation,
-      criteria: [
-        { name: 'Technical Depth', rating: scorecardRating, feedback: 'Strong foundational concepts' },
-        { name: 'Problem Solving & DSA', rating: Math.max(1, scorecardRating - 1), feedback: 'Good approach' },
-        { name: 'Communication & Culture Fit', rating: 4, feedback: 'Articulate and clear' },
-      ],
-      notes: scorecardNotes,
-    })
+    setIsSubmittingScorecard(true)
+    const reviewerName = interviewerName.trim() || 'Evaluator'
 
+    const payload: ScorecardPayload = {
+      interviewer_name: reviewerName,
+      recommendation: scorecardRecommendation,
+      overall_notes: scorecardNotes.trim(),
+      criteria: {
+        technical_depth: {
+          rating: techRating,
+          notes: techNotes.trim(),
+        },
+        problem_solving: {
+          rating: problemRating,
+          notes: problemNotes.trim(),
+        },
+        communication: {
+          rating: commRating,
+          notes: commNotes.trim(),
+        },
+      },
+    }
+
+    let savedToServer = false
+    if (!USE_MOCK) {
+      try {
+        const created = await api.createScorecard(activeApp.id, payload)
+        setServerScorecards((prev) => [created, ...prev])
+        savedToServer = true
+        toast.success('Interview scorecard submitted!')
+      } catch {
+        savedToServer = false
+      }
+    }
+
+    if (!savedToServer) {
+      addScorecard(activeApp.id, {
+        interviewerName: reviewerName,
+        overallRecommendation: scorecardRecommendation,
+        criteria: [
+          { name: 'Technical Depth', rating: techRating, feedback: techNotes.trim() },
+          { name: 'Problem Solving', rating: problemRating, feedback: problemNotes.trim() },
+          { name: 'Communication', rating: commRating, feedback: commNotes.trim() },
+        ],
+        notes: scorecardNotes.trim(),
+        isDeviceOnly: true,
+      } as any)
+      if (!USE_MOCK) {
+        toast.info('Scorecard saved on this device only (server sync not supported)')
+      } else {
+        toast.success('Interview scorecard submitted!')
+      }
+    }
+
+    setIsSubmittingScorecard(false)
+    setTechNotes('')
+    setProblemNotes('')
+    setCommNotes('')
     setScorecardNotes('')
-    toast.success('Interview scorecard submitted!')
+    setInterviewerName('')
   }
 
   return (
@@ -624,13 +693,21 @@ export const CandidateDetailPage: React.FC = () => {
           </div>
 
           {/* Bottom Tabs: Resume View, Notes, Timeline, Scorecards */}
-          <Tabs defaultValue="notes" className="bg-card rounded-xl border border-border p-5 shadow-soft">
+          <Tabs defaultValue="resume" className="bg-card rounded-xl border border-border p-5 shadow-soft">
             <TabsList className="bg-gray-100 p-1">
+              <TabsTrigger value="resume">Resume Document</TabsTrigger>
               <TabsTrigger value="notes">Notes ({activeApp?.notes.length || 0})</TabsTrigger>
-              <TabsTrigger value="resume">Resume Raw Text</TabsTrigger>
+              <TabsTrigger value="scorecard">
+                Scorecards ({USE_MOCK ? activeApp?.scorecards?.length || 0 : serverScorecards.length + (activeApp?.scorecards?.filter((s: any) => s.isDeviceOnly)?.length || 0)})
+              </TabsTrigger>
               <TabsTrigger value="timeline">Stage Timeline</TabsTrigger>
-              <TabsTrigger value="scorecard">Scorecards</TabsTrigger>
+              <TabsTrigger value="raw-text">Resume Raw Text</TabsTrigger>
             </TabsList>
+
+            {/* TAB: Original Resume Viewer */}
+            <TabsContent value="resume" className="mt-4">
+              <ResumeViewer candidate={candidate} isBlind={isBlindMode} />
+            </TabsContent>
 
             {/* TAB: Notes */}
             <TabsContent value="notes" className="space-y-4 mt-4">
@@ -664,7 +741,7 @@ export const CandidateDetailPage: React.FC = () => {
             </TabsContent>
 
             {/* TAB: Resume Raw Text with Highlights */}
-            <TabsContent value="resume" className="mt-4 space-y-2">
+            <TabsContent value="raw-text" className="mt-4 space-y-2">
               <div className="flex items-center justify-between text-xs text-muted px-1">
                 <span>Resume Raw Text</span>
                 <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
@@ -725,15 +802,27 @@ export const CandidateDetailPage: React.FC = () => {
 
             {/* TAB: Scorecard */}
             <TabsContent value="scorecard" className="mt-4 space-y-4">
-              <form onSubmit={handleSubmitScorecard} className="p-4 bg-gray-50 rounded-lg border border-border space-y-3">
-                <h4 className="text-xs font-bold text-text uppercase">Submit Interview Scorecard</h4>
-                <div className="grid grid-cols-2 gap-3">
+              <form onSubmit={handleSubmitScorecard} className="p-4 bg-gray-50 rounded-lg border border-border space-y-3" data-testid="scorecard-form">
+                <h4 className="text-xs font-bold text-text uppercase">Submit Structured Interview Scorecard</h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-semibold text-text mb-1">Evaluator / Interviewer Name</label>
+                    <Input
+                      value={interviewerName}
+                      onChange={(e) => setInterviewerName(e.target.value)}
+                      placeholder="e.g. Lead Engineer (defaults to Evaluator)"
+                      className="text-xs"
+                      data-testid="scorecard-interviewer-input"
+                    />
+                  </div>
                   <div>
                     <label className="block text-[11px] font-semibold text-text mb-1">Overall Recommendation</label>
                     <select
                       value={scorecardRecommendation}
                       onChange={(e) => setScorecardRecommendation(e.target.value as any)}
                       className="w-full h-8 px-2 text-xs rounded border border-border bg-white"
+                      data-testid="scorecard-recommendation-select"
                     >
                       <option value="Strong Yes">Strong Yes</option>
                       <option value="Yes">Yes</option>
@@ -742,52 +831,190 @@ export const CandidateDetailPage: React.FC = () => {
                       <option value="Strong No">Strong No</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-text mb-1">Rating (1 to 5 Stars)</label>
-                    <select
-                      value={scorecardRating}
-                      onChange={(e) => setScorecardRating(parseInt(e.target.value, 10))}
-                      className="w-full h-8 px-2 text-xs rounded border border-border bg-white"
-                    >
-                      <option value={5}>⭐⭐⭐⭐⭐ (5 - Exceptional)</option>
-                      <option value={4}>⭐⭐⭐⭐ (4 - Strong Fit)</option>
-                      <option value={3}>⭐⭐⭐ (3 - Meets Expectations)</option>
-                      <option value={2}>⭐⭐ (2 - Gaps Identified)</option>
-                      <option value={1}>⭐ (1 - Unqualified)</option>
-                    </select>
+                </div>
+
+                {/* Structured Criteria: Technical Depth, Problem Solving, Communication */}
+                <div className="space-y-3 pt-2 border-t border-border">
+                  <div className="p-3 bg-white rounded-lg border border-border space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-text">1. Technical Depth</span>
+                      <select
+                        value={techRating}
+                        onChange={(e) => setTechRating(parseInt(e.target.value, 10))}
+                        className="h-7 px-2 text-xs rounded border border-border bg-white"
+                        data-testid="scorecard-tech-rating"
+                      >
+                        <option value={5}>⭐⭐⭐⭐⭐ (5 - Exceptional)</option>
+                        <option value={4}>⭐⭐⭐⭐ (4 - Strong Fit)</option>
+                        <option value={3}>⭐⭐⭐ (3 - Meets Bar)</option>
+                        <option value={2}>⭐⭐ (2 - Gaps Found)</option>
+                        <option value={1}>⭐ (1 - Sub-standard)</option>
+                      </select>
+                    </div>
+                    <Input
+                      value={techNotes}
+                      onChange={(e) => setTechNotes(e.target.value)}
+                      placeholder="Notes on framework depth, system architecture, core domain knowledge..."
+                      className="text-xs"
+                      data-testid="scorecard-tech-notes"
+                    />
+                  </div>
+
+                  <div className="p-3 bg-white rounded-lg border border-border space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-text">2. Problem Solving & Algorithms</span>
+                      <select
+                        value={problemRating}
+                        onChange={(e) => setProblemRating(parseInt(e.target.value, 10))}
+                        className="h-7 px-2 text-xs rounded border border-border bg-white"
+                        data-testid="scorecard-problem-rating"
+                      >
+                        <option value={5}>⭐⭐⭐⭐⭐ (5 - Exceptional)</option>
+                        <option value={4}>⭐⭐⭐⭐ (4 - Strong Fit)</option>
+                        <option value={3}>⭐⭐⭐ (3 - Meets Bar)</option>
+                        <option value={2}>⭐⭐ (2 - Gaps Found)</option>
+                        <option value={1}>⭐ (1 - Sub-standard)</option>
+                      </select>
+                    </div>
+                    <Input
+                      value={problemNotes}
+                      onChange={(e) => setProblemNotes(e.target.value)}
+                      placeholder="Notes on code cleanliness, edge case analysis, debugging process..."
+                      className="text-xs"
+                      data-testid="scorecard-problem-notes"
+                    />
+                  </div>
+
+                  <div className="p-3 bg-white rounded-lg border border-border space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-text">3. Communication & Teamwork</span>
+                      <select
+                        value={commRating}
+                        onChange={(e) => setCommRating(parseInt(e.target.value, 10))}
+                        className="h-7 px-2 text-xs rounded border border-border bg-white"
+                        data-testid="scorecard-comm-rating"
+                      >
+                        <option value={5}>⭐⭐⭐⭐⭐ (5 - Exceptional)</option>
+                        <option value={4}>⭐⭐⭐⭐ (4 - Strong Fit)</option>
+                        <option value={3}>⭐⭐⭐ (3 - Meets Bar)</option>
+                        <option value={2}>⭐⭐ (2 - Gaps Found)</option>
+                        <option value={1}>⭐ (1 - Sub-standard)</option>
+                      </select>
+                    </div>
+                    <Input
+                      value={commNotes}
+                      onChange={(e) => setCommNotes(e.target.value)}
+                      placeholder="Notes on clarity of thought, articulating trade-offs, culture alignment..."
+                      className="text-xs"
+                      data-testid="scorecard-comm-notes"
+                    />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-text mb-1">Evaluation Notes</label>
+                  <label className="block text-[11px] font-semibold text-text mb-1">Overall Evaluation Notes</label>
                   <Input
                     value={scorecardNotes}
                     onChange={(e) => setScorecardNotes(e.target.value)}
-                    placeholder="Candidate demonstrated clean coding practices and modular architecture..."
+                    placeholder="General summary and next round recommendations..."
                     className="text-xs"
+                    data-testid="scorecard-overall-notes"
                   />
                 </div>
 
-                <Button type="submit" variant="primary" size="sm">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="sm"
+                  isLoading={isSubmittingScorecard}
+                  data-testid="submit-scorecard-btn"
+                >
                   Submit Scorecard
                 </Button>
               </form>
 
-              {/* Existing scorecards */}
-              {activeApp?.scorecards && activeApp.scorecards.length > 0 && (
-                <div className="space-y-2 pt-2">
-                  <h4 className="text-xs font-bold text-muted">Submitted Evaluations:</h4>
-                  {activeApp.scorecards.map((sc: any) => (
-                    <div key={sc.id} className="p-3 bg-white rounded-lg border border-border text-xs space-y-1">
-                      <div className="flex justify-between font-bold text-text">
-                        <span>{sc.interviewerName}</span>
-                        <Badge variant="success" size="sm">{sc.overallRecommendation}</Badge>
+              {/* Submitted Evaluations List */}
+              <div className="space-y-3 pt-2">
+                <h4 className="text-xs font-bold text-muted uppercase tracking-wider">
+                  Submitted Evaluations
+                </h4>
+                {(() => {
+                  const combined = [
+                    ...serverScorecards,
+                    ...((activeApp?.scorecards || []).filter((s: any) => s.isDeviceOnly || USE_MOCK)),
+                  ]
+
+                  if (combined.length === 0) {
+                    return <p className="text-xs text-muted italic">No scorecards submitted yet for this application.</p>
+                  }
+
+                  return combined.map((sc: any, idx: number) => {
+                    const isDevOnly = sc.isDeviceOnly || !sc.id || sc.id.startsWith('local-')
+                    const reviewer = sc.interviewer_name || sc.interviewerName || 'Evaluator'
+                    const rec = sc.recommendation || sc.overallRecommendation || 'Neutral'
+                    const notes = sc.overall_notes || sc.notes || ''
+                    const criteria = sc.criteria || {
+                      technical_depth: sc.technical_depth,
+                      problem_solving: sc.problem_solving,
+                      communication: sc.communication,
+                    }
+
+                    return (
+                      <div
+                        key={sc.id || idx}
+                        className="p-3 bg-white rounded-lg border border-border text-xs space-y-2"
+                        data-testid="submitted-scorecard-record"
+                      >
+                        <div className="flex items-center justify-between font-bold text-text">
+                          <div className="flex items-center gap-2">
+                            <span>{reviewer}</span>
+                            {isDevOnly && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                Saved on this device only
+                              </span>
+                            )}
+                          </div>
+                          <Badge variant={rec.includes('Yes') ? 'success' : rec.includes('No') ? 'danger' : 'warning'} size="sm">
+                            {rec}
+                          </Badge>
+                        </div>
+
+                        {criteria && (
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 p-2 bg-gray-50 rounded text-[11px]">
+                            <div>
+                              <span className="font-semibold text-muted block">Technical:</span>
+                              <span>
+                                {criteria.technical_depth?.rating || criteria[0]?.rating || '-'}/5
+                                {criteria.technical_depth?.notes ? ` - ${criteria.technical_depth.notes}` : ''}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="font-semibold text-muted block">Problem Solving:</span>
+                              <span>
+                                {criteria.problem_solving?.rating || criteria[1]?.rating || '-'}/5
+                                {criteria.problem_solving?.notes ? ` - ${criteria.problem_solving.notes}` : ''}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="font-semibold text-muted block">Communication:</span>
+                              <span>
+                                {criteria.communication?.rating || criteria[2]?.rating || '-'}/5
+                                {criteria.communication?.notes ? ` - ${criteria.communication.notes}` : ''}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {notes && (
+                          <p className="text-muted text-[11px]">
+                            <strong className="text-text">Overall Notes:</strong> {notes}
+                          </p>
+                        )}
                       </div>
-                      <p className="text-muted text-[11px]">{sc.notes}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    )
+                  })
+                })()}
+              </div>
             </TabsContent>
           </Tabs>
         </div>

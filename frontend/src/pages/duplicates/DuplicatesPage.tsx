@@ -36,6 +36,8 @@ export const DuplicatesPage: React.FC = () => {
   const [mergeModalOpen, setMergeModalOpen] = useState(false)
   const [primaryCandId, setPrimaryCandId] = useState<string>('')
   const [isScanning, setIsScanning] = useState(false)
+  const [isMergeDisabled, setIsMergeDisabled] = useState(false)
+  const [isMerging, setIsMerging] = useState(false)
 
   // In live mode, fetch candidate directory strictly from API (no store fallback)
   const [apiCandidates, setApiCandidates] = useState<Candidate[]>([])
@@ -173,26 +175,46 @@ export const DuplicatesPage: React.FC = () => {
   const resolvedGroups = allGroups.filter((g) => g.status !== 'Pending')
 
   const handleOpenMerge = (group: DuplicateGroup) => {
+    if (isMergeDisabled) {
+      toast.error('Merge is not enabled on this server')
+      return
+    }
     setSelectedGroup(group)
     setPrimaryCandId(group.candidateIds[0])
     setMergeModalOpen(true)
   }
 
-  const handleConfirmMerge = () => {
+  const handleConfirmMerge = async () => {
     if (!selectedGroup || !primaryCandId) return
-    mergeDuplicates(selectedGroup.id, primaryCandId)
-    setMergeModalOpen(false)
-    toast.success('Duplicate profiles merged successfully!')
+    setIsMerging(true)
+    try {
+      if (!USE_MOCK) {
+        await api.mergeDuplicates(selectedGroup.id, primaryCandId)
+      }
+      mergeDuplicates(selectedGroup.id, primaryCandId)
+      setMergeModalOpen(false)
+      toast.success('Duplicate profiles merged successfully!')
+    } catch (err: any) {
+      if (err.status === 404 || err.status === 405 || err.status === 501) {
+        setIsMergeDisabled(true)
+        setMergeModalOpen(false)
+        toast.error('Merge is not enabled on this server')
+      } else {
+        toast.error(err.message || 'Failed to merge duplicate profiles')
+      }
+    } finally {
+      setIsMerging(false)
+    }
   }
 
   const handleDismiss = (groupId: string) => {
     dismissDuplicate(groupId)
-    toast.info('Duplicate group dismissed')
+    toast.info('Duplicate group dismissed (Saved on this device only)')
   }
 
   const handleKeepBoth = (groupId: string) => {
     keepBothDuplicates(groupId)
-    toast.success('Marked candidates as distinct individuals')
+    toast.success('Marked candidates as distinct individuals (Saved on this device only)')
   }
 
   const handleManualScan = () => {
@@ -253,13 +275,31 @@ export const DuplicatesPage: React.FC = () => {
               <Button variant="outline" size="sm" onClick={() => setMergeModalOpen(false)}>
                 Cancel
               </Button>
-              <Button variant="primary" size="sm" leftIcon={<GitMerge className="w-3.5 h-3.5" />} onClick={handleConfirmMerge}>
+              <Button
+                variant="primary"
+                size="sm"
+                leftIcon={<GitMerge className="w-3.5 h-3.5" />}
+                onClick={handleConfirmMerge}
+                isLoading={isMerging}
+                data-testid="confirm-merge-modal-btn"
+              >
                 Confirm & Consolidate
               </Button>
             </div>
           </div>
         )}
       </Modal>
+
+      {/* Server Notice Banner when Merge is Unsupported */}
+      {isMergeDisabled && (
+        <div
+          className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-center gap-2.5 shadow-2xs"
+          data-testid="merge-disabled-banner"
+        >
+          <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
+          <span className="font-semibold">Merge is not enabled on this server</span>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -365,18 +405,22 @@ export const DuplicatesPage: React.FC = () => {
                   </div>
 
                   {group.status === 'Pending' && (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
                         variant="primary"
                         size="sm"
+                        disabled={isMergeDisabled}
+                        title={isMergeDisabled ? 'Merge is not enabled on this server' : 'Merge Profiles'}
                         leftIcon={<GitMerge className="w-3.5 h-3.5" />}
                         onClick={() => handleOpenMerge(group)}
+                        data-testid="merge-profiles-btn"
                       >
                         Merge Profiles
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
+                        title="Saved on this device only"
                         onClick={() => handleKeepBoth(group.id)}
                       >
                         Keep Both
@@ -384,10 +428,14 @@ export const DuplicatesPage: React.FC = () => {
                       <Button
                         variant="ghost"
                         size="sm"
+                        title="Saved on this device only"
                         onClick={() => handleDismiss(group.id)}
                       >
                         Dismiss
                       </Button>
+                      <span className="text-[10px] text-muted italic">
+                        (Resolutions saved on this device only)
+                      </span>
                     </div>
                   )}
                 </div>

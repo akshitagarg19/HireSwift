@@ -2,7 +2,10 @@ import { test, expect } from '@playwright/test'
 
 test.describe('Task 7: Live Mode & Stub Server Contract Tests', () => {
   // Helper to ensure live mode is forced in localStorage before module init
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, request }) => {
+    try {
+      await request.post('http://127.0.0.1:8000/reset')
+    } catch {}
     await page.addInitScript(() => {
       localStorage.setItem('hireswift_use_mock', 'false')
     })

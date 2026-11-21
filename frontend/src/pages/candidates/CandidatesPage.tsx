@@ -37,7 +37,9 @@ import {
   Briefcase,
   FileText,
 } from 'lucide-react'
-import { Candidate, Application, DEFAULT_DEMO_COMPANY } from '@/types'
+import { Candidate, Application, Job, DEFAULT_DEMO_COMPANY } from '@/types'
+import { ResumeViewer } from '@/components/ResumeViewer'
+import { cn } from '@/lib/utils'
 
 export interface SkillFilter {
   name: string
@@ -52,6 +54,7 @@ export const CandidatesPage: React.FC = () => {
     currentUser,
     candidates,
     applications,
+    jobs,
     companies,
     duplicateGroups,
     bulkUpdateApplicationStage,
@@ -101,6 +104,14 @@ export const CandidatesPage: React.FC = () => {
   // Filter states
   const [textSearch, setTextSearch] = useState(initialQ)
   const [debouncedQuery, setDebouncedQuery] = useState(initialQ)
+
+  // Auto-debounce textSearch into debouncedQuery (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(textSearch)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [textSearch])
   const [minCgpa, setMinCgpa] = useState<number>(initialCgpa)
   const [minTenth, setMinTenth] = useState<number>(initialTenth)
   const [minTwelfth, setMinTwelfth] = useState<number>(initialTwelfth)
@@ -189,6 +200,43 @@ export const CandidatesPage: React.FC = () => {
   const [serverError, setServerError] = useState<string | null>(null)
   const [retryTrigger, setRetryTrigger] = useState<number>(0)
   const lastCandidatesReqId = useRef(0)
+
+  const [serverJobs, setServerJobs] = useState<Job[]>([])
+  const [serverApplications, setServerApplications] = useState<Application[]>([])
+  const [selectedBulkJobId, setSelectedBulkJobId] = useState<string>(searchParams.get('job_id') || 'any')
+
+  // Saved Filters State (Stored in localStorage on this device only)
+  interface SavedFilterRecord {
+    id: string
+    name: string
+    createdAt: string
+    params: Record<string, string>
+  }
+  const [savedFilters, setSavedFilters] = useState<SavedFilterRecord[]>(() => {
+    if (typeof window === 'undefined') return []
+    try {
+      const raw = localStorage.getItem('hireswift_saved_filters')
+      return raw ? JSON.parse(raw) : []
+    } catch {
+      return []
+    }
+  })
+  const [saveFilterModalOpen, setSaveFilterModalOpen] = useState(false)
+  const [newFilterName, setNewFilterName] = useState('')
+
+  // Drawer Tab State
+  const [drawerTab, setDrawerTab] = useState<'profile' | 'resume'>('profile')
+
+  // Fetch Jobs and Applications for live mode
+  useEffect(() => {
+    if (USE_MOCK) return
+    Promise.all([api.getJobs(), api.getApplications()])
+      .then(([jList, aList]) => {
+        setServerJobs(jList)
+        setServerApplications(aList)
+      })
+      .catch(() => {})
+  }, [retryTrigger])
 
   // Debounce search query input (300ms)
   useEffect(() => {
@@ -351,15 +399,15 @@ export const CandidatesPage: React.FC = () => {
 
   const candidateAppMap = useMemo(() => {
     const map = new Map<string, Application>()
-    applications.forEach((app) => {
-      if (app.companyId === currentCompanyId) {
-        if (!map.has(app.candidateId) || (app.matchScore ?? 0) > (map.get(app.candidateId)?.matchScore ?? 0)) {
-          map.set(app.candidateId, app)
-        }
+    const appList = USE_MOCK ? applications : serverApplications
+    appList.forEach((app) => {
+      if (USE_MOCK && app.companyId !== currentCompanyId) return
+      if (!map.has(app.candidateId) || (app.matchScore ?? 0) > (map.get(app.candidateId)?.matchScore ?? 0)) {
+        map.set(app.candidateId, app)
       }
     })
     return map
-  }, [applications, currentCompanyId])
+  }, [applications, serverApplications, currentCompanyId])
 
   // Distinct values for sidebar pickers
   const availableSkills = useMemo(() => {
@@ -588,73 +636,254 @@ export const CandidatesPage: React.FC = () => {
     }
   }
 
-  // Bulk actions
-  const handleBulkMoveStage = () => {
-    const appIdsToMove: string[] = []
-    selectedCandidateIds.forEach((candId) => {
-      const app = candidateAppMap.get(candId)
-      if (app) appIdsToMove.push(app.id)
+  // Concurrency Pool Helper (Promise.allSettled with maximum concurrency of 5)
+  async function runWithConcurrency<T, R>(
+    items: T[],
+    limit: number,
+    fn: (item: T) => Promise<R>
+  ): Promise<PromiseSettledResult<R>[]> {
+    const results: PromiseSettledResult<R>[] = new Array(items.length)
+    let executing = 0
+    let index = 0
+
+    return new Promise((resolve) => {
+      function next() {
+        if (index >= items.length && executing === 0) {
+          resolve(results)
+          return
+        }
+        while (executing < limit && index < items.length) {
+          const currentIndex = index++
+          executing++
+          fn(items[currentIndex])
+            .then((value) => {
+              results[currentIndex] = { status: 'fulfilled', value }
+            })
+            .catch((reason) => {
+              results[currentIndex] = { status: 'rejected', reason }
+            })
+            .finally(() => {
+              executing--
+              next()
+            })
+        }
+      }
+      next()
+    })
+  }
+
+  // Bulk stage action using real API and concurrency 5
+  const executeBulkMove = async (newStage: string) => {
+    const targetCandidates = candidatesToRender.filter((c) => selectedCandidateIds.includes(c.id))
+    if (targetCandidates.length === 0) return
+
+    const appList = USE_MOCK ? applications : serverApplications
+    const targetJobId = selectedBulkJobId === 'any' ? '' : selectedBulkJobId
+
+    const itemsToMove: { candidate: Candidate; application: Application }[] = []
+    const skippedCandidates: { candidate: Candidate; reason: string }[] = []
+
+    targetCandidates.forEach((cand) => {
+      // Find candidate's application for targetJobId
+      const app = appList.find(
+        (a) =>
+          (a.candidateId === cand.id || (a as any).candidate_id === cand.id) &&
+          (targetJobId ? a.jobId === targetJobId || (a as any).job_id === targetJobId : true)
+      )
+      if (!app) {
+        skippedCandidates.push({ candidate: cand, reason: 'no application for the selected job' })
+      } else {
+        itemsToMove.push({ candidate: cand, application: app })
+      }
     })
 
-    bulkUpdateApplicationStage(appIdsToMove, targetStage, 'Bulk stage migration')
-    setBulkStageModalOpen(false)
+    if (itemsToMove.length === 0) {
+      toast.error(
+        `None of the ${targetCandidates.length} selected candidates have an application for the selected job.`
+      )
+      return
+    }
+
+    const toastId = toast.loading(`Moving ${itemsToMove.length} candidate(s) to ${newStage}...`)
+
+    const results = await runWithConcurrency(itemsToMove, 5, async ({ application }) => {
+      if (!USE_MOCK) {
+        return await api.moveApplication(application.id, newStage, `Bulk stage update to ${newStage}`)
+      } else {
+        bulkUpdateApplicationStage([application.id], newStage, `Bulk stage update to ${newStage}`)
+        return { success: true, stage: newStage, historyId: '' }
+      }
+    })
+
+    // Refetch applications in live mode
+    if (!USE_MOCK) {
+      const refreshedApps = await api.getApplications().catch(() => [])
+      setServerApplications(refreshedApps)
+    }
+
+    // Parse successes and failures
+    let succeededCount = 0
+    const failureDetails: string[] = []
+
+    results.forEach((res, idx) => {
+      const cand = itemsToMove[idx].candidate
+      if (res.status === 'fulfilled') {
+        succeededCount++
+      } else {
+        const errDetail = res.reason?.detail || res.reason?.message || 'Server rejected transition'
+        failureDetails.push(`${cand.name} - ${errDetail}`)
+      }
+    })
+
+    skippedCandidates.forEach(({ candidate, reason }) => {
+      failureDetails.push(`${candidate.name} - ${reason}`)
+    })
+
+    toast.dismiss(toastId)
+    const totalRequested = targetCandidates.length
+
+    if (failureDetails.length === 0) {
+      toast.success(`Moved ${succeededCount} of ${totalRequested} candidates to ${newStage}!`)
+    } else {
+      const summary = `Moved ${succeededCount} of ${totalRequested}. ${failureDetails.length} failed: ${failureDetails.join('; ')}`
+      if (succeededCount > 0) {
+        toast.info(summary, { duration: 6000 })
+      } else {
+        toast.error(summary, { duration: 6000 })
+      }
+    }
+
     setSelectedCandidateIds([])
-    toast.success(`Moved ${appIdsToMove.length} candidates to ${targetStage}!`)
+    setBulkStageModalOpen(false)
+  }
+
+  const handleBulkMoveStage = () => {
+    executeBulkMove(targetStage)
   }
 
   const handleBulkShortlist = () => {
-    const appIdsToMove: string[] = []
-    selectedCandidateIds.forEach((candId) => {
-      const app = candidateAppMap.get(candId)
-      if (app) appIdsToMove.push(app.id)
-    })
-
-    bulkUpdateApplicationStage(appIdsToMove, 'shortlisted', 'Bulk shortlist')
-    setSelectedCandidateIds([])
-    toast.success(`Shortlisted ${appIdsToMove.length} candidates!`)
+    executeBulkMove('shortlisted')
   }
+
+  // Keyboard shortcut 's' listener for toggling shortlist on selected candidates
+  useEffect(() => {
+    const handleShortcutS = () => {
+      if (selectedCandidateIds.length > 0) {
+        handleBulkShortlist()
+      }
+    }
+    window.addEventListener('hireswift-shortcut-s', handleShortcutS)
+    return () => window.removeEventListener('hireswift-shortcut-s', handleShortcutS)
+  }, [selectedCandidateIds, selectedBulkJobId, serverApplications, applications])
 
   const handleBulkEmail = () => {
     navigate(`/app/emails?recipientIds=${selectedCandidateIds.join(',')}`)
   }
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
+    let allExportCandidates: Candidate[] = []
+
+    if (!USE_MOCK) {
+      const totalToFetch = Math.min(serverTotal || 0, 1000)
+      if (totalToFetch === 0) {
+        toast.info('No candidates match the current filter.')
+        return
+      }
+      const toastId = toast.loading(`Exporting candidates: 0 of ${totalToFetch}...`)
+      let fetched = 0
+      let p = 1
+      const queryParams: CandidateFilterParams = {
+        page: 1,
+        page_size: 100,
+      }
+      if (debouncedQuery.trim()) queryParams.q = debouncedQuery.trim()
+      if (minCgpa > 0) queryParams.cgpa_min = minCgpa
+      if (minTenth > 0) queryParams.tenth_min = minTenth
+      if (minTwelfth > 0) queryParams.twelfth_min = minTwelfth
+      if (minExp > 0 || searchParams.has('exp_min')) queryParams.exp_min = minExp
+      if (maxExp < 10 || searchParams.has('exp_max')) queryParams.exp_max = maxExp
+      if (selectedCity && selectedCity !== 'All') queryParams.city = selectedCity
+      if (selectedBatch) queryParams.grad_year = selectedBatch
+      if (includeUnknown) queryParams.include_unknown = true
+
+      const skillsAll = skillFilters.filter((s) => s.mode === 'all').map((s) => s.name)
+      const skillsAny = skillFilters.filter((s) => s.mode === 'any').map((s) => s.name)
+      const skillsNone = skillFilters.filter((s) => s.mode === 'none').map((s) => s.name)
+      if (skillsAll.length > 0) queryParams.skills_all = skillsAll
+      if (skillsAny.length > 0) queryParams.skills_any = skillsAny
+      if (skillsNone.length > 0) queryParams.skills_none = skillsNone
+
+      try {
+        while (fetched < totalToFetch) {
+          queryParams.page = p
+          const res = await api.getCandidates(queryParams)
+          allExportCandidates = [...allExportCandidates, ...res.items]
+          fetched += res.items.length
+          toast.loading(`Exporting candidates: ${Math.min(fetched, totalToFetch)} of ${totalToFetch}...`, {
+            id: toastId,
+          })
+          if (res.items.length < 100 || fetched >= res.total) break
+          p++
+        }
+      } catch (err: any) {
+        toast.dismiss(toastId)
+        toast.error(`Export error: ${err.message || 'Failed to fetch'}`)
+        return
+      }
+      toast.dismiss(toastId)
+    } else {
+      allExportCandidates = filteredCandidates
+    }
+
     const headers = [
-      'Candidate ID',
-      'Name',
-      'Email',
-      'Phone',
-      'Location',
-      'College',
-      'Degree',
-      'CGPA',
-      '10th Percent',
-      '12th Percent',
-      'Experience (Years)',
-      'Grad Year',
-      'Skills',
-      'Match Score',
-      'Application Stage',
+      'name',
+      'email',
+      'phone',
+      'city',
+      'college',
+      'degree',
+      'grad_year',
+      'cgpa_10',
+      'tenth_pct',
+      'twelfth_pct',
+      'experience_years',
+      'skills',
+      'stage',
+      'match_score',
     ]
 
-    const rows = filteredCandidates.map((c) => {
+    const rows = allExportCandidates.map((c) => {
       const app = candidateAppMap.get(c.id)
+      const name = isBlindMode ? `Candidate #${c.id}` : c.name
+      const email = isBlindMode ? '[Hidden]' : c.email || ''
+      const phone = isBlindMode ? '[Hidden]' : c.phone || ''
+      const city = isBlindMode ? '[Hidden]' : c.location || ''
+      const college = isBlindMode ? '[Hidden]' : c.college || ''
+      const degree = c.degree || ''
+      const gradYear = c.gradYear != null && c.gradYear > 0 ? String(c.gradYear) : ''
+      const cgpa = c.cgpa != null ? String(c.cgpa) : ''
+      const tenth = c.tenthPercent != null ? String(c.tenthPercent) : ''
+      const twelfth = c.twelfthPercent != null ? String(c.twelfthPercent) : ''
+      const exp = c.experienceYears != null ? String(c.experienceYears) : ''
+      const skills = (c.skills || []).join(' | ')
+      const stage = app?.stage || 'applied'
+      const matchScore = app?.matchScore != null ? String(app.matchScore) : ''
+
       return [
-        c.id,
-        `"${c.name}"`,
-        `"${c.email}"`,
-        `"${c.phone}"`,
-        `"${c.location}"`,
-        `"${c.college}"`,
-        `"${c.degree}"`,
-        c.cgpa,
-        c.tenthPercent,
-        c.twelfthPercent,
-        c.experienceYears,
-        c.gradYear,
-        `"${c.skills.join(', ')}"`,
-        app?.matchScore !== undefined ? `${app.matchScore}%` : 'N/A',
-        app?.stage || 'applied',
+        `"${name.replace(/"/g, '""')}"`,
+        `"${email.replace(/"/g, '""')}"`,
+        `"${phone.replace(/"/g, '""')}"`,
+        `"${city.replace(/"/g, '""')}"`,
+        `"${college.replace(/"/g, '""')}"`,
+        `"${degree.replace(/"/g, '""')}"`,
+        gradYear,
+        cgpa,
+        tenth,
+        twelfth,
+        exp,
+        `"${skills.replace(/"/g, '""')}"`,
+        stage,
+        matchScore,
       ].join(',')
     })
 
@@ -663,10 +892,10 @@ export const CandidatesPage: React.FC = () => {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `hireswift_candidates_${company.name.toLowerCase().replace(/\s+/g, '_')}.csv`
+    link.download = `hireswift_candidates_export.csv`
     link.click()
     URL.revokeObjectURL(url)
-    toast.success(`Exported ${filteredCandidates.length} candidate profiles to CSV!`)
+    toast.success(`Exported ${allExportCandidates.length} candidate profiles to CSV!`)
   }
 
   // Compare Handler: Strictly enforce 2 to 3 candidates per plan!
@@ -747,6 +976,60 @@ export const CandidatesPage: React.FC = () => {
         </div>
       </Modal>
 
+      {/* Save Filter Modal */}
+      <Modal
+        open={saveFilterModalOpen}
+        onOpenChange={setSaveFilterModalOpen}
+        title="Save Current Filter"
+        description="Save your active search parameters, skills, and eligibility filters. Labeled: Saved on this device only."
+      >
+        <div className="space-y-4 pt-2">
+          <div>
+            <label className="block text-xs font-semibold text-text mb-1">Filter Name</label>
+            <Input
+              value={newFilterName}
+              onChange={(e) => setNewFilterName(e.target.value)}
+              placeholder="e.g. Bangalore React Freshers"
+              className="text-xs"
+              data-testid="save-filter-name-input"
+            />
+          </div>
+          <div className="p-2.5 bg-amber-50 rounded-lg border border-amber-200 text-[11px] text-amber-900">
+            📌 <strong>Saved on this device only:</strong> Custom filter configurations are persisted in local browser storage and not synchronized to the server.
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-border">
+            <Button variant="outline" size="sm" onClick={() => setSaveFilterModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                const name = newFilterName.trim() || `Filter ${savedFilters.length + 1}`
+                const params = Object.fromEntries(searchParams.entries())
+                if (textSearch.trim()) {
+                  params.q = textSearch.trim()
+                }
+                const record = {
+                  id: `filter-${Date.now()}`,
+                  name,
+                  createdAt: new Date().toISOString(),
+                  params,
+                }
+                const updated = [record, ...savedFilters]
+                setSavedFilters(updated)
+                localStorage.setItem('hireswift_saved_filters', JSON.stringify(updated))
+                setSaveFilterModalOpen(false)
+                toast.success(`Filter "${name}" saved on this device only!`)
+              }}
+              data-testid="confirm-save-filter-btn"
+            >
+              Save Filter
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -761,13 +1044,61 @@ export const CandidatesPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Saved Filters Controls */}
+          <div className="flex items-center gap-1.5">
+            <select
+              aria-label="Recall Saved Filter"
+              value=""
+              onChange={(e) => {
+                const sf = savedFilters.find((f) => f.id === e.target.value)
+                if (sf) {
+                  setSearchParams(new URLSearchParams(sf.params))
+                  if (sf.params.q !== undefined) {
+                    setTextSearch(sf.params.q)
+                    setDebouncedQuery(sf.params.q)
+                  }
+                  toast.success(`Applied saved filter: "${sf.name}"`)
+                }
+              }}
+              className="h-8 px-2 text-xs rounded-lg border border-border bg-white text-text cursor-pointer"
+              data-testid="saved-filters-dropdown"
+            >
+              <option value="">
+                {savedFilters.length > 0 ? `Saved Filters (${savedFilters.length})` : 'Saved Filters (0)'}
+              </option>
+              {savedFilters.map((sf) => (
+                <option key={sf.id} value={sf.id}>
+                  {sf.name}
+                </option>
+              ))}
+            </select>
+
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<Bookmark className="w-3.5 h-3.5" />}
+              onClick={() => {
+                setNewFilterName(`Filter ${savedFilters.length + 1}`)
+                setSaveFilterModalOpen(true)
+              }}
+              data-testid="save-filter-btn"
+              title="Save current filter parameters on this device only"
+            >
+              Save Filter
+            </Button>
+            <span className="text-[10px] text-muted italic hidden xl:inline">
+              (Saved on this device only)
+            </span>
+          </div>
+
           {/* Export CSV Button */}
           <Button
             variant="outline"
             size="sm"
             leftIcon={<Download className="w-3.5 h-3.5" />}
             onClick={handleExportCSV}
+            data-testid="export-csv-btn"
           >
             Export CSV
           </Button>
@@ -838,6 +1169,7 @@ export const CandidatesPage: React.FC = () => {
             <input
               type="text"
               aria-label="Search candidates by name, skill, or college"
+              data-testid="candidates-search-input"
               value={textSearch}
               onChange={(e) => setTextSearch(e.target.value)}
               placeholder='Try Natural Language or search candidates by skill/college (e.g. "IIT Delhi", "Python", "Noida")...'
@@ -1122,15 +1454,35 @@ export const CandidatesPage: React.FC = () => {
                 {selectedCandidateIds.length} candidate{selectedCandidateIds.length > 1 ? 's' : ''} selected
               </span>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Target Job Picker for Bulk Actions */}
+                <div className="flex items-center gap-1.5 bg-white px-2 py-1 rounded-lg border border-border">
+                  <Briefcase className="w-3.5 h-3.5 text-muted" />
+                  <span className="text-[11px] text-muted font-medium">Job:</span>
+                  <select
+                    aria-label="Target Job Requisition for Bulk Action"
+                    value={selectedBulkJobId}
+                    onChange={(e) => setSelectedBulkJobId(e.target.value)}
+                    className="text-xs bg-transparent border-none font-semibold text-text focus:ring-0 cursor-pointer"
+                    data-testid="bulk-job-picker"
+                  >
+                    <option value="any">Any Assigned Job</option>
+                    {(USE_MOCK ? jobs.filter((j) => j.companyId === currentCompanyId) : serverJobs).map((j) => (
+                      <option key={j.id} value={j.id}>
+                        {j.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {isReadOnly ? (
                   <span className="text-xs text-muted italic">Read-only view (Viewer role)</span>
                 ) : (
                   <>
-                    <Button variant="primary" size="sm" onClick={handleBulkShortlist}>
+                    <Button variant="primary" size="sm" onClick={handleBulkShortlist} data-testid="bulk-shortlist-btn">
                       Shortlist Selected
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => setBulkStageModalOpen(true)}>
+                    <Button variant="outline" size="sm" onClick={() => setBulkStageModalOpen(true)} data-testid="bulk-move-stage-btn">
                       Move Stage
                     </Button>
                     <Button variant="outline" size="sm" leftIcon={<Mail className="w-3 h-3" />} onClick={handleBulkEmail}>
@@ -1285,7 +1637,12 @@ export const CandidatesPage: React.FC = () => {
                           }`}
                         >
                           <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                            <button onClick={() => toggleSelect(candidate.id)} aria-label={`Select candidate ${candidate.name}`} className="p-0.5 text-muted hover:text-text">
+                            <button
+                              onClick={() => toggleSelect(candidate.id)}
+                              aria-label={`Select candidate ${candidate.name}`}
+                              data-testid="candidate-select-btn"
+                              className="p-0.5 text-muted hover:text-text"
+                            >
                               {isSelected ? (
                                 <CheckSquare className="w-4 h-4 text-primary" />
                               ) : (
@@ -1496,13 +1853,40 @@ export const CandidatesPage: React.FC = () => {
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                variant={isDrawerEditing ? 'outline' : 'secondary'}
-                size="sm"
-                onClick={() => setIsDrawerEditing(!isDrawerEditing)}
-              >
-                {isDrawerEditing ? 'Cancel' : 'Edit Mode'}
-              </Button>
+              <div className="flex rounded-lg border border-border p-0.5 bg-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setDrawerTab('profile')}
+                  className={cn(
+                    'px-2.5 py-1 text-xs font-semibold rounded-md transition-colors',
+                    drawerTab === 'profile' ? 'bg-white shadow-2xs text-text' : 'text-muted hover:text-text'
+                  )}
+                  data-testid="drawer-tab-profile"
+                >
+                  Profile
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDrawerTab('resume')}
+                  className={cn(
+                    'px-2.5 py-1 text-xs font-semibold rounded-md transition-colors',
+                    drawerTab === 'resume' ? 'bg-white shadow-2xs text-text' : 'text-muted hover:text-text'
+                  )}
+                  data-testid="drawer-tab-resume"
+                >
+                  Resume
+                </button>
+              </div>
+
+              {drawerTab === 'profile' && (
+                <Button
+                  variant={isDrawerEditing ? 'outline' : 'secondary'}
+                  size="sm"
+                  onClick={() => setIsDrawerEditing(!isDrawerEditing)}
+                >
+                  {isDrawerEditing ? 'Cancel' : 'Edit Mode'}
+                </Button>
+              )}
               {drawerCandidate && (
                 <Button
                   variant="outline"
@@ -1521,7 +1905,9 @@ export const CandidatesPage: React.FC = () => {
       >
         {drawerCandidate && (
           <div className="p-6 space-y-6 overflow-y-auto max-h-[calc(100vh-120px)]">
-            {isDrawerEditing ? (
+            {drawerTab === 'resume' ? (
+              <ResumeViewer candidate={drawerCandidate} isBlind={isBlindMode} />
+            ) : isDrawerEditing ? (
               /* EDIT MODE */
               <div className="space-y-4">
                 <div className="bg-indigo-50/60 p-3 rounded-lg border border-indigo-100 flex items-center justify-between">

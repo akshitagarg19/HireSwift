@@ -44,6 +44,13 @@ const testDataDir = path.join(rootDir, 'test-data')
 const PORT = process.env.PORT || 8000
 const STUB_SCALE = parseInt(process.env.STUB_SCALE || '0', 10)
 
+function isProposedDisabled(req, query) {
+  if (process.env.STUB_DISABLE_PROPOSED === '1') return true
+  if (query && query.get('disable_proposed') === 'true') return true
+  if (req.headers && req.headers['x-stub-disable-proposed'] === 'true') return true
+  return false
+}
+
 let candidatesDb = []
 let jobsDb = []
 let applicationsDb = []
@@ -67,6 +74,7 @@ function loadTestData() {
 
     return {
       id: c.candidate_id,
+      resume_file: c.file || null,
       company_id: 'company-nova',
       name: c.name,
       email: c.email || '',
@@ -675,6 +683,44 @@ const server = http.createServer(async (req, res) => {
     const passingIds = new Set(job.hard_filter_pass_candidate_ids || [])
     const requiredList = job.required_skills || []
 
+    const hasCustomWeights =
+      query.has('weights_skills') ||
+      query.has('weights_experience') ||
+      query.has('weights_education') ||
+      query.has('weights_semantic')
+
+    const disabledProposed = isProposedDisabled(req, query)
+
+    let wSkills = 40
+    let wExp = 25
+    let wEdu = 20
+    let wSem = 15
+    let weightsApplied = null
+
+    if (hasCustomWeights && !disabledProposed) {
+      const rawSkills = parseFloat(query.get('weights_skills') || '0.4')
+      const rawExp = parseFloat(query.get('weights_experience') || '0.25')
+      const rawEdu = parseFloat(query.get('weights_education') || '0.2')
+      const rawSem = parseFloat(query.get('weights_semantic') || '0.15')
+      if (rawSkills <= 1 && rawExp <= 1 && rawEdu <= 1 && rawSem <= 1) {
+        wSkills = rawSkills * 100
+        wExp = rawExp * 100
+        wEdu = rawEdu * 100
+        wSem = rawSem * 100
+      } else {
+        wSkills = rawSkills
+        wExp = rawExp
+        wEdu = rawEdu
+        wSem = rawSem
+      }
+      weightsApplied = {
+        skills: rawSkills,
+        experience: rawExp,
+        education: rawEdu,
+        semantic: rawSem,
+      }
+    }
+
     const ranked = candidatesDb.map((cand) => {
       const isPass = passingIds.has(cand.id)
       const candSkills = cand.skills || []
@@ -708,9 +754,10 @@ const server = http.createServer(async (req, res) => {
         semanticScore = 40
       }
 
-      // Compute exact weighted score: 40% skills + 25% experience + 20% education + 15% semantic
+      // Compute exact weighted score using applied weights
+      const totalW = (wSkills + wExp + wEdu + wSem) || 100
       const match_score = Math.round(
-        (skillsScore * 40 + expScore * 25 + eduScore * 20 + semanticScore * 15) / 100
+        (skillsScore * wSkills + expScore * wExp + eduScore * wEdu + semanticScore * wSem) / totalW
       )
 
       return {
@@ -738,9 +785,29 @@ const server = http.createServer(async (req, res) => {
     // Sort descending by match_score
     ranked.sort((a, b) => b.match_score - a.match_score)
 
-    return sendJson(res, 200, {
+    const responsePayload = {
       job_id: jobId,
       candidates: ranked,
+    }
+    if (weightsApplied) {
+      responsePayload.weights_applied = weightsApplied
+    }
+
+    return sendJson(res, 200, responsePayload)
+  }
+
+  // 8b. Re-match Talent Pool
+  const rematchMatch = pathname.match(/^\/jobs\/([^/]+)\/rematch$/)
+  if (req.method === 'POST' && rematchMatch) {
+    if (isProposedDisabled(req, query)) {
+      return sendJson(res, 404, { detail: 'Rematch endpoint not supported on this server.' })
+    }
+    const jobId = rematchMatch[1]
+    return sendJson(res, 200, {
+      job_id: jobId,
+      total_ranked: candidatesDb.length,
+      status: 'complete',
+      recomputed_at: new Date().toISOString(),
     })
   }
 
@@ -809,8 +876,9 @@ const server = http.createServer(async (req, res) => {
       rejected: ['applied'],
     }
 
+    const isUndo = Boolean(body.reason && /undo|revert/i.test(body.reason))
     const allowed = validTransitions[currentStage] || []
-    if (!allowed.includes(targetStage)) {
+    if (!allowed.includes(targetStage) && !isUndo) {
       return sendJson(res, 400, {
         detail: `Invalid stage transition: Cannot jump directly from '${currentStage}' to '${targetStage}'. Must progress through standard pipeline flow.`,
       })
@@ -896,6 +964,132 @@ const server = http.createServer(async (req, res) => {
     })
 
     return sendJson(res, 200, { sent: results })
+  }
+
+  // 14. Merge Duplicates (Proposed API endpoint)
+  const mergeMatch = pathname.match(/^\/duplicates\/([^/]+)\/merge$/)
+  if (req.method === 'POST' && mergeMatch) {
+    if (isProposedDisabled(req, query)) {
+      return sendJson(res, 404, { detail: 'Merge endpoint not enabled on this server.' })
+    }
+    const groupId = mergeMatch[1]
+    const body = await parseJsonBody(req)
+    const primaryId = body.primary_candidate_id
+
+    const primaryCandidate = candidatesDb.find((c) => c.id === primaryId)
+    if (!primaryCandidate) {
+      return sendJson(res, 404, { detail: `Primary candidate ${primaryId} not found` })
+    }
+
+    // Find all duplicate cluster members
+    const clusterMembers = candidatesDb.filter((c) => c.duplicate_group_id === groupId || c.id === primaryId)
+    const mergedIds = clusterMembers.map((c) => c.id).filter((id) => id !== primaryId)
+
+    // Clear duplicate flag on primary
+    primaryCandidate.is_duplicate = false
+    primaryCandidate.duplicate_group_id = null
+
+    // For secondary members, mark as merged
+    clusterMembers.forEach((m) => {
+      if (m.id !== primaryId) {
+        m.is_duplicate = false
+        m.duplicate_group_id = null
+        m.merged_into = primaryId
+      }
+    })
+
+    return sendJson(res, 200, {
+      success: true,
+      candidate: primaryCandidate,
+      merged_candidate_ids: mergedIds,
+    })
+  }
+
+  // 15. Submit Interview Scorecard (Proposed API endpoint)
+  const scorecardPostMatch = pathname.match(/^\/applications\/([^/]+)\/scorecards$/)
+  if (req.method === 'POST' && scorecardPostMatch) {
+    if (isProposedDisabled(req, query)) {
+      return sendJson(res, 404, { detail: 'Scorecards endpoint not supported on this server.' })
+    }
+    const appId = scorecardPostMatch[1]
+    const body = await parseJsonBody(req)
+
+    const app = applicationsDb.find((a) => a.application_id === appId || a.id === appId)
+    const scorecardRecord = {
+      id: `sc-${Date.now()}`,
+      application_id: appId,
+      interviewer_name: body.interviewer_name || 'Evaluator',
+      recommendation: body.recommendation || 'Yes',
+      technical_depth: body.technical_depth || (body.criteria && body.criteria.technical_depth) || { rating: 3, notes: '' },
+      problem_solving: body.problem_solving || (body.criteria && body.criteria.problem_solving) || { rating: 3, notes: '' },
+      communication: body.communication || (body.criteria && body.criteria.communication) || { rating: 3, notes: '' },
+      criteria: body.criteria || {
+        technical_depth: body.technical_depth || { rating: 3, notes: '' },
+        problem_solving: body.problem_solving || { rating: 3, notes: '' },
+        communication: body.communication || { rating: 3, notes: '' },
+      },
+      notes: body.notes || body.overall_notes || '',
+      overall_notes: body.overall_notes || body.notes || '',
+      created_at: new Date().toISOString(),
+    }
+
+    if (app) {
+      if (!app.scorecards) app.scorecards = []
+      app.scorecards.push(scorecardRecord)
+    }
+
+    return sendJson(res, 201, scorecardRecord)
+  }
+
+  // 15b. Get Application Scorecards
+  const scorecardGetMatch = pathname.match(/^\/applications\/([^/]+)\/scorecards$/)
+  if (req.method === 'GET' && scorecardGetMatch) {
+    if (isProposedDisabled(req, query)) {
+      return sendJson(res, 404, { detail: 'Scorecards endpoint not supported on this server.' })
+    }
+    const appId = scorecardGetMatch[1]
+    const app = applicationsDb.find((a) => a.application_id === appId || a.id === appId)
+    return sendJson(res, 200, app?.scorecards || [])
+  }
+
+  // 16. Original Resume File Viewer
+  const resumeMatch = pathname.match(/^\/candidates\/([^/]+)\/resume$/)
+  if ((req.method === 'GET' || req.method === 'HEAD') && resumeMatch) {
+    if (isProposedDisabled(req, query)) {
+      return sendJson(res, 404, { detail: 'Original file not available on this server' })
+    }
+    const candId = resumeMatch[1]
+    const cand = candidatesDb.find((c) => c.id === candId)
+    if (!cand || !cand.resume_file) {
+      return sendJson(res, 404, { detail: 'Original file not available on this server' })
+    }
+
+    const resumesDir = path.join(testDataDir, 'resumes')
+    const filePath = path.join(resumesDir, cand.resume_file)
+
+    if (!fs.existsSync(filePath)) {
+      return sendJson(res, 404, { detail: 'Original file not available on this server' })
+    }
+
+    const isPdf = cand.resume_file.toLowerCase().endsWith('.pdf')
+    const contentType = isPdf
+      ? 'application/pdf'
+      : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+    const stat = fs.statSync(filePath)
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Content-Disposition': `inline; filename="${cand.resume_file}"`,
+      'Content-Length': stat.size,
+      'Access-Control-Allow-Origin': '*',
+    })
+
+    if (req.method === 'HEAD') {
+      return res.end()
+    }
+
+    const readStream = fs.createReadStream(filePath)
+    return readStream.pipe(res)
   }
 
   // Fallback 404

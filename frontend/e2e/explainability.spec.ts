@@ -13,7 +13,7 @@ test.describe('Task 3: AI Match Explainability, Skill-Gap & Highlights', () => {
     await page.waitForLoadState('networkidle')
 
     // Profile header
-    await expect(page.getByText('Shreya Gupta')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Shreya Gupta' })).toBeVisible()
 
     // Assert Match score ring displays "-" or "Unscored", not 75
     const matchPanel = page.locator('.space-y-4')

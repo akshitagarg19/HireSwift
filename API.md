@@ -406,3 +406,133 @@ If the server does not support email dispatch (e.g. returns `404 Not Found` or `
 2. Open native email client via `mailto:` with BCC chunking (max 40 recipients per URL).
 3. Download recipient CSV export (`name,email,subject,body`).
 
+---
+
+## 7. PROPOSED (Needs Backend Confirmation)
+
+The following endpoints have been added to support advanced recruiter workflows (deduplication merging, structured scorecards, dimension weight adjustments, talent pool re-matching, and original resume document inspection). In live mode (`VITE_USE_MOCK=false`), the frontend calls these endpoints if supported by the backend, with verified fallback behavior when they return `404 Not Found` or `501 Not Implemented`.
+
+### `POST /duplicates/{group_id}/merge`
+Merges two or more duplicate candidate profiles belonging to a cluster into a designated primary profile. The server consolidates application histories, flags secondary records as merged or archived, and clears the duplicate cluster state.
+
+**Request Body:**
+```json
+{
+  "primary_candidate_id": "C005"
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "candidate": {
+    "id": "C005",
+    "name": "Nandini Rao",
+    "email": "nandini.rao@outlook.com",
+    "phone": "+91 9876543210",
+    "location": "Bengaluru",
+    "college": "RV College of Engineering",
+    "is_duplicate": false,
+    "duplicate_group_id": null
+  },
+  "merged_candidate_ids": ["C005_dup"]
+}
+```
+
+**Fallback Contract:**
+If `POST /duplicates/{group_id}/merge` is not supported (returns `404`, `405`, or `501`), the frontend hides the Merge action button and displays a clear notice: *"Merge is not enabled on this server"*. "Keep both" and "Dismiss" actions remain available locally on the client and are explicitly tagged with *"Saved on this device only"*.
+
+### `POST /applications/{id}/scorecards`
+Submits an evaluator's structured interview scorecard for a specific candidate application. Supports independent rating (1–5) and freeform feedback notes per evaluation criterion.
+
+**Request Body:**
+```json
+{
+  "interviewer_name": "Technical Evaluator",
+  "recommendation": "Yes",
+  "technical_depth": {
+    "rating": 4,
+    "notes": "Solid understanding of distributed systems and database indexing."
+  },
+  "problem_solving": {
+    "rating": 5,
+    "notes": "Solved dynamic programming problem with optimal space complexity."
+  },
+  "communication": {
+    "rating": 4,
+    "notes": "Articulate and asked thoughtful questions regarding system architecture."
+  },
+  "notes": "Strong candidate for backend engineering role."
+}
+```
+
+**Response:** `201 Created`
+```json
+{
+  "id": "sc-1700000001",
+  "application_id": "app-C001",
+  "interviewer_name": "Technical Evaluator",
+  "recommendation": "Yes",
+  "technical_depth": { "rating": 4, "notes": "Solid understanding..." },
+  "problem_solving": { "rating": 5, "notes": "Solved dynamic programming..." },
+  "communication": { "rating": 4, "notes": "Articulate..." },
+  "notes": "Strong candidate for backend engineering role.",
+  "created_at": "2026-11-21T04:30:00Z"
+}
+```
+
+**Fallback Contract:**
+If the server returns `404` or does not support persistent scorecards, the frontend stores the evaluation locally and displays the label *"Saved on this device only"*.
+
+### `GET /jobs/{id}/ranking` (Custom Scoring Weights)
+When recruiters adjust custom dimension weighting sliders, the frontend passes normalized weights as query parameters:
+`GET /jobs/{id}/ranking?weights_skills=0.4&weights_experience=0.25&weights_education=0.2&weights_semantic=0.15`
+
+**Response:** `200 OK`
+```json
+{
+  "job_id": "job-101",
+  "weights_applied": {
+    "skills": 0.4,
+    "experience": 0.25,
+    "education": 0.2,
+    "semantic": 0.15
+  },
+  "candidates": [ ... ]
+}
+```
+
+**Notice Behavior:**
+If the response does not return a matching `weights_applied` payload, the server has ignored custom weights. The frontend does not invent a re-rank and displays a notice: *"This server ignored custom weights; ranking is unchanged."*
+
+### `POST /jobs/{id}/rematch`
+Triggers an immediate re-evaluation and semantic re-scoring of the entire indexed candidate talent pool against the specified job requisition.
+
+**Response:** `200 OK`
+```json
+{
+  "job_id": "job-101",
+  "total_ranked": 50,
+  "status": "complete",
+  "recomputed_at": "2026-11-21T04:30:00Z"
+}
+```
+
+**Fallback Contract:**
+If `POST /jobs/{id}/rematch` is not implemented (404), the frontend refetches `GET /jobs/{id}/ranking` and notifies the recruiter: *"Ranking refreshed from the server"*.
+
+### `GET /candidates/{id}/resume`
+Streams the original uploaded resume document (`.pdf` or `.docx`) for in-browser visual inspection and field extraction verification.
+
+- **Response:** `200 OK`
+  - `Content-Type`: `application/pdf` (or `application/vnd.openxmlformats-officedocument.wordprocessingml.document` for DOCX)
+  - `Content-Disposition`: `inline; filename="Aarav_Sharma_Resume.pdf"`
+- **Response (Missing):** `404 Not Found`
+  ```json
+  {
+    "detail": "Original file not available on this server"
+  }
+  ```
+
+

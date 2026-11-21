@@ -24,9 +24,12 @@ import {
   Menu,
   X,
   Sparkles,
+  HelpCircle,
 } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 import { CommandPalette } from '@/components/CommandPalette'
 import { cn } from '@/lib/utils'
 import { Role } from '@/types'
@@ -52,11 +55,96 @@ export const AppShell: React.FC = () => {
   } = useAppStore()
 
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showCompanyMenu, setShowCompanyMenu] = useState(false)
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [isSynthetic, setIsSynthetic] = useState(getIsSyntheticData())
+
+  // Global Keyboard Shortcuts handler
+  useEffect(() => {
+    let pendingKeyG = false
+    let timerG: any = null
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement
+      const isInput =
+        activeEl &&
+        (activeEl.tagName === 'INPUT' ||
+          activeEl.tagName === 'TEXTAREA' ||
+          activeEl.tagName === 'SELECT' ||
+          (activeEl as HTMLElement).isContentEditable)
+
+      if (isInput) return
+
+      // Handle sequence: 'g' then 'c' / 'p' / 'd'
+      if (e.key.toLowerCase() === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        pendingKeyG = true
+        clearTimeout(timerG)
+        timerG = setTimeout(() => {
+          pendingKeyG = false
+        }, 1200)
+        return
+      }
+
+      if (pendingKeyG && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        pendingKeyG = false
+        clearTimeout(timerG)
+        const key = e.key.toLowerCase()
+        if (key === 'c') {
+          e.preventDefault()
+          navigate('/app/candidates')
+          return
+        }
+        if (key === 'p') {
+          e.preventDefault()
+          navigate('/app/pipeline')
+          return
+        }
+        if (key === 'd') {
+          e.preventDefault()
+          navigate('/app/dashboard')
+          return
+        }
+      }
+
+      // '?' opens shortcuts cheat sheet modal
+      if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
+        e.preventDefault()
+        setShortcutsModalOpen((prev) => !prev)
+        return
+      }
+
+      // '/' focuses search input or global command palette
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        const searchInput = document.querySelector<HTMLInputElement>(
+          'input[placeholder*="Search"], input[type="search"], [data-testid="search-input"]'
+        )
+        if (searchInput) {
+          searchInput.focus()
+          searchInput.select()
+        } else {
+          setCommandPaletteOpen(true)
+        }
+        return
+      }
+
+      // 's' when not in input dispatches custom event for shortlist
+      if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('hireswift-shortcut-s'))
+        return
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      clearTimeout(timerG)
+    }
+  }, [navigate])
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -122,6 +210,76 @@ export const AppShell: React.FC = () => {
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       <CommandPalette open={commandPaletteOpen} onOpenChange={setCommandPaletteOpen} />
+
+      {/* Keyboard Shortcuts Cheat Sheet Modal */}
+      <Modal
+        open={shortcutsModalOpen}
+        onOpenChange={setShortcutsModalOpen}
+        title="Keyboard Shortcuts Cheat Sheet"
+        description="Navigate HireSwift ATS quickly using single-key and sequence shortcuts."
+      >
+        <div className="space-y-4 pt-2 text-xs" data-testid="shortcuts-modal">
+          <div className="space-y-2">
+            <h4 className="font-bold text-muted uppercase text-[10px] tracking-wider">Navigation Sequences</h4>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-border">
+                <span>Go to Candidates</span>
+                <kbd className="px-2 py-0.5 rounded bg-white border border-border font-mono font-bold text-text text-[11px] shadow-2xs">
+                  g then c
+                </kbd>
+              </div>
+              <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-border">
+                <span>Go to Pipeline</span>
+                <kbd className="px-2 py-0.5 rounded bg-white border border-border font-mono font-bold text-text text-[11px] shadow-2xs">
+                  g then p
+                </kbd>
+              </div>
+              <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-border">
+                <span>Go to Dashboard</span>
+                <kbd className="px-2 py-0.5 rounded bg-white border border-border font-mono font-bold text-text text-[11px] shadow-2xs">
+                  g then d
+                </kbd>
+              </div>
+              <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-border">
+                <span>Focus Search</span>
+                <kbd className="px-2 py-0.5 rounded bg-white border border-border font-mono font-bold text-text text-[11px] shadow-2xs">
+                  /
+                </kbd>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-border">
+            <h4 className="font-bold text-muted uppercase text-[10px] tracking-wider">Actions & Help</h4>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-border">
+                <span>Toggle Shortlist</span>
+                <kbd className="px-2 py-0.5 rounded bg-white border border-border font-mono font-bold text-text text-[11px] shadow-2xs">
+                  s
+                </kbd>
+              </div>
+              <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-border">
+                <span>Shortcuts Cheat Sheet</span>
+                <kbd className="px-2 py-0.5 rounded bg-white border border-border font-mono font-bold text-text text-[11px] shadow-2xs">
+                  ?
+                </kbd>
+              </div>
+              <div className="flex items-center justify-between p-2.5 bg-gray-50 rounded-lg border border-border">
+                <span>Command Palette</span>
+                <kbd className="px-2 py-0.5 rounded bg-white border border-border font-mono font-bold text-text text-[11px] shadow-2xs">
+                  Ctrl / ⌘ + K
+                </kbd>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2 border-t border-border">
+            <Button variant="primary" size="sm" onClick={() => setShortcutsModalOpen(false)}>
+              Got it
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* LEFT SIDEBAR (DESKTOP) */}
       <aside className="hidden md:flex w-64 bg-card border-r border-border flex-col shrink-0 select-none">
@@ -327,6 +485,19 @@ export const AppShell: React.FC = () => {
             >
               <Eye className={cn('w-3.5 h-3.5', isBlindMode ? 'text-amber-700' : 'text-muted')} />
               <span>Blind Mode: {isBlindMode ? 'ON' : 'OFF'}</span>
+            </button>
+
+            {/* Keyboard Shortcuts Button */}
+            <button
+              type="button"
+              onClick={() => setShortcutsModalOpen(true)}
+              data-testid="shortcuts-help-trigger"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white text-muted hover:text-text border border-border hover:bg-gray-50 transition-all cursor-pointer shadow-xs"
+              title="Keyboard Shortcuts Cheat Sheet (?)"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-muted" />
+              <span className="hidden sm:inline">Shortcuts</span>
+              <kbd className="px-1 py-0.2 rounded bg-gray-100 border border-gray-200 text-[10px] font-mono">?</kbd>
             </button>
 
             {/* Company Display / Switcher */}

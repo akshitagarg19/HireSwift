@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { toast } from 'sonner'
-import { Search, Briefcase, ArrowRight, Mail, AlertTriangle } from 'lucide-react'
+import { Search, Briefcase, ArrowRight, Mail, AlertTriangle, Download } from 'lucide-react'
 import { Candidate, Application, Job } from '@/types'
 
 // EXACTLY 5 PIPELINE COLUMNS PER PLAN
@@ -114,6 +114,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick
           <span className="text-muted font-medium">Move to:</span>
           <select
             aria-label={`Move ${displayName} to stage`}
+            data-testid="kanban-move-select"
             defaultValue=""
             onChange={(e) => {
               if (e.target.value) {
@@ -228,6 +229,7 @@ export const PipelinePage: React.FC = () => {
     jobs,
     candidates,
     applications,
+    updateApplicationStage,
     isBlindMode,
   } = useAppStore()
 
@@ -366,19 +368,59 @@ export const PipelinePage: React.FC = () => {
     applications: filteredItems.filter((item) => item.application.stage === stage.id),
   }))
 
-  // Execute transition via API with snap-back on error
-  const handleStageTransition = async (appId: string, currentStage: string, targetStage: string) => {
+  // Execute transition via API with snap-back on error and 8-second Undo toast
+  const handleStageTransition = async (
+    appId: string,
+    currentStage: string,
+    targetStage: string,
+    candidateName?: string
+  ) => {
     if (currentStage === targetStage) return
+
+    const item = filteredItems.find((it) => it.application.id === appId)
+    const candName =
+      candidateName ||
+      item?.candidate.name ||
+      'Candidate'
+
+    const targetStageObj = PIPELINE_STAGES.find((s) => s.id === targetStage)
+    const targetStageName = targetStageObj ? targetStageObj.name : targetStage
+    const currentStageObj = PIPELINE_STAGES.find((s) => s.id === currentStage)
+    const currentStageName = currentStageObj ? currentStageObj.name : currentStage
 
     try {
       // Calls POST /applications/{id}/move per contract
       await api.moveApplication(appId, targetStage, 'Updated via Pipeline Kanban')
-      toast.success(`Candidate advanced to ${targetStage.toUpperCase()}`)
+
       // Persist by refetching after each move
       if (!USE_MOCK) {
         const updated = await api.getApplications(selectedJobId !== 'all' ? selectedJobId : undefined)
         setLiveApplications(updated)
+      } else {
+        updateApplicationStage(appId, targetStage, 'Pipeline drag')
       }
+
+      // Show Undo toast for 8 seconds
+      toast.success(`Moved ${candName} to ${targetStageName}. (advanced to ${targetStageName.toUpperCase()})`, {
+        duration: 8000,
+        action: {
+          label: 'Undo',
+          onClick: async () => {
+            try {
+              await api.moveApplication(appId, currentStage, 'Undo Kanban move')
+              toast.success(`Reverted ${candName} back to ${currentStageName}`)
+              if (!USE_MOCK) {
+                const refreshed = await api.getApplications(selectedJobId !== 'all' ? selectedJobId : undefined)
+                setLiveApplications(refreshed)
+              } else {
+                updateApplicationStage(appId, currentStage, 'Undo pipeline drag')
+              }
+            } catch (undoErr: any) {
+              toast.error(undoErr.message || 'Failed to revert stage move')
+            }
+          },
+        },
+      })
     } catch (err: any) {
       // On invalid transition (400): snap card back and show server detail
       toast.error(err.detail || err.message || 'Invalid stage transition.')
@@ -388,6 +430,75 @@ export const PipelinePage: React.FC = () => {
         setLiveApplications(synced)
       }
     }
+  }
+
+  const handleExportShortlisted = () => {
+    const shortlistedApps = filteredItems.filter((item) => item.application.stage === 'shortlisted')
+    if (shortlistedApps.length === 0) {
+      toast.info('No candidates in Shortlisted stage to export')
+      return
+    }
+
+    const headers = [
+      'name',
+      'email',
+      'phone',
+      'city',
+      'college',
+      'degree',
+      'grad_year',
+      'cgpa_10',
+      'tenth_pct',
+      'twelfth_pct',
+      'experience_years',
+      'skills',
+      'stage',
+      'match_score',
+    ]
+
+    const rows = shortlistedApps.map(({ application, candidate: c }) => {
+      const name = isBlindMode ? `Candidate #${c.id}` : c.name
+      const email = isBlindMode ? '[Hidden]' : c.email || ''
+      const phone = isBlindMode ? '[Hidden]' : c.phone || ''
+      const city = isBlindMode ? '[Hidden]' : c.location || ''
+      const college = isBlindMode ? '[Hidden]' : c.college || ''
+      const degree = c.degree || ''
+      const gradYear = c.gradYear != null && c.gradYear > 0 ? String(c.gradYear) : ''
+      const cgpa = c.cgpa != null ? String(c.cgpa) : ''
+      const tenth = c.tenthPercent != null ? String(c.tenthPercent) : ''
+      const twelfth = c.twelfthPercent != null ? String(c.twelfthPercent) : ''
+      const exp = c.experienceYears != null ? String(c.experienceYears) : ''
+      const skills = (c.skills || []).join(' | ')
+      const stage = application.stage || 'shortlisted'
+      const matchScore = application.matchScore != null ? String(application.matchScore) : ''
+
+      return [
+        `"${name.replace(/"/g, '""')}"`,
+        `"${email.replace(/"/g, '""')}"`,
+        `"${phone.replace(/"/g, '""')}"`,
+        `"${city.replace(/"/g, '""')}"`,
+        `"${college.replace(/"/g, '""')}"`,
+        `"${degree.replace(/"/g, '""')}"`,
+        gradYear,
+        cgpa,
+        tenth,
+        twelfth,
+        exp,
+        `"${skills.replace(/"/g, '""')}"`,
+        stage,
+        matchScore,
+      ].join(',')
+    })
+
+    const csvContent = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `hireswift_shortlisted_${selectedJobId !== 'all' ? selectedJobId : 'all'}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    toast.success(`Exported ${shortlistedApps.length} shortlisted candidates to CSV!`)
   }
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -408,7 +519,12 @@ export const PipelinePage: React.FC = () => {
     const draggedItem = relevantApplications.find((a) => a.id === appId)
     if (!draggedItem) return
 
-    handleStageTransition(appId, draggedItem.stage, targetStageId)
+    const item = filteredItems.find((it) => it.application.id === appId)
+    const candName = isBlindMode
+      ? `Candidate #${draggedItem.candidateId}`
+      : item?.candidate.name || 'Candidate'
+
+    handleStageTransition(appId, draggedItem.stage, targetStageId, candName)
   }
 
   return (
@@ -451,6 +567,18 @@ export const PipelinePage: React.FC = () => {
               className="h-8 pl-8 text-xs"
             />
           </div>
+
+          {/* Export Shortlisted */}
+          <Button
+            variant="outline"
+            size="sm"
+            leftIcon={<Download className="w-3.5 h-3.5" />}
+            onClick={handleExportShortlisted}
+            data-testid="export-shortlisted-btn"
+            title="Export candidates currently in Shortlisted column as CSV"
+          >
+            Export Shortlisted
+          </Button>
         </div>
       </div>
 

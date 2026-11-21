@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { Candidate, Job, Application, Company } from '@/types'
+import { Candidate, Job, Application, Company, ScoringWeights } from '@/types'
 import { useAppStore } from '@/store'
 import { matchScore } from '@/lib/scoring'
 import { ApiCandidateSchema, fromApiCandidate, toApiCandidate, fromApiApplication } from './mappers'
@@ -125,8 +125,68 @@ export const JobRankingItemSchema = z.object({
 
 export const JobRankingResponseSchema = z.object({
   job_id: z.string(),
+  weights_applied: z
+    .object({
+      skills: z.number().optional(),
+      experience: z.number().optional(),
+      education: z.number().optional(),
+      semantic: z.number().optional(),
+    })
+    .nullable()
+    .optional(),
   candidates: z.array(JobRankingItemSchema),
 })
+
+export const MergeDuplicatesResponseSchema = z.object({
+  success: z.boolean(),
+  candidate: ApiCandidateSchema,
+  merged_candidate_ids: z.array(z.string()).default([]),
+})
+
+export const CriterionEvaluationSchema = z.object({
+  rating: z.number().min(1).max(5),
+  notes: z.string().default(''),
+})
+
+export const ScorecardRecordSchema = z.object({
+  id: z.string(),
+  application_id: z.string(),
+  interviewer_name: z.string().default('Evaluator'),
+  recommendation: z.string(),
+  technical_depth: CriterionEvaluationSchema.optional(),
+  problem_solving: CriterionEvaluationSchema.optional(),
+  communication: CriterionEvaluationSchema.optional(),
+  notes: z.string().default(''),
+  created_at: z.string(),
+})
+
+export type ScorecardRecord = z.infer<typeof ScorecardRecordSchema>
+
+export interface ScorecardPayload {
+  interviewer_name?: string
+  recommendation: string
+  technical_depth?: { rating: number; notes: string }
+  problem_solving?: { rating: number; notes: string }
+  communication?: { rating: number; notes: string }
+  criteria?: {
+    technical_depth?: { rating: number; notes: string }
+    problem_solving?: { rating: number; notes: string }
+    communication?: { rating: number; notes: string }
+  }
+  notes?: string
+  overall_notes?: string
+}
+
+export type JobRankingWeightsParam = {
+  skills?: number
+  experience?: number
+  education?: number
+  semantic?: number
+  weights_skills?: number
+  weights_experience?: number
+  weights_education?: number
+  weights_semantic?: number
+}
 
 export const SkillGapResponseSchema = z.object({
   job_id: z.string(),
@@ -227,6 +287,12 @@ export interface JobRankingCandidate {
 
 export interface JobRankingResponse {
   job_id: string;
+  weights_applied?: {
+    skills?: number;
+    experience?: number;
+    education?: number;
+    semantic?: number;
+  };
   candidates: JobRankingCandidate[];
 }
 
@@ -463,18 +529,28 @@ export const mockApi = {
     return updated
   },
 
-  getJobRanking: async (jobId: string): Promise<JobRankingResponse> => {
+  getJobRanking: async (
+    jobId: string,
+    customWeights?: JobRankingWeightsParam
+  ): Promise<JobRankingResponse> => {
     await sleep(200)
     const store = useAppStore.getState()
     const job = store.jobs.find((j) => j.id === jobId)
     if (!job) throw new ApiError(404, `Job ${jobId} not found.`)
 
     const company = store.companies.find((c) => c.id === job.companyId)
-    const weights = job.scoringWeights || company?.settings.scoringWeights || {
+    const defaultWeights = job.scoringWeights || company?.settings.scoringWeights || {
       skills: 40,
       experience: 25,
       education: 20,
       semantic: 15,
+    }
+
+    const weights: ScoringWeights = {
+      skills: customWeights?.skills ?? (customWeights?.weights_skills != null ? Math.round(customWeights.weights_skills * 100) : defaultWeights.skills),
+      experience: customWeights?.experience ?? (customWeights?.weights_experience != null ? Math.round(customWeights.weights_experience * 100) : defaultWeights.experience),
+      education: customWeights?.education ?? (customWeights?.weights_education != null ? Math.round(customWeights.weights_education * 100) : defaultWeights.education),
+      semantic: customWeights?.semantic ?? (customWeights?.weights_semantic != null ? Math.round(customWeights.weights_semantic * 100) : defaultWeights.semantic),
     }
     const synonyms = company?.settings.skillSynonyms || {}
 
@@ -504,10 +580,83 @@ export const mockApi = {
     // Sort descending by match score
     ranked.sort((a, b) => (b.match_score ?? 0) - (a.match_score ?? 0))
 
+    const appliedWeights = customWeights
+      ? {
+          skills: customWeights.weights_skills ?? (customWeights.skills != null ? customWeights.skills / 100 : undefined),
+          experience: customWeights.weights_experience ?? (customWeights.experience != null ? customWeights.experience / 100 : undefined),
+          education: customWeights.weights_education ?? (customWeights.education != null ? customWeights.education / 100 : undefined),
+          semantic: customWeights.weights_semantic ?? (customWeights.semantic != null ? customWeights.semantic / 100 : undefined),
+        }
+      : undefined
+
     return {
       job_id: jobId,
+      weights_applied: appliedWeights,
       candidates: ranked,
     }
+  },
+
+  rematchJob: async (jobId: string): Promise<{ job_id: string; total_ranked: number; status: string }> => {
+    await sleep(200)
+    return { job_id: jobId, total_ranked: 50, status: 'complete' }
+  },
+
+  mergeDuplicates: async (groupId: string, primaryCandidateId: string): Promise<Candidate> => {
+    await sleep(200)
+    const store = useAppStore.getState()
+    store.mergeDuplicates(groupId, primaryCandidateId)
+    const cand = store.candidates.find((c) => c.id === primaryCandidateId)
+    if (!cand) throw new ApiError(404, 'Candidate not found')
+    return cand
+  },
+
+  createScorecard: async (applicationId: string, scorecard: ScorecardPayload): Promise<ScorecardRecord> => {
+    await sleep(200)
+    const store = useAppStore.getState()
+    const tech = scorecard.technical_depth || scorecard.criteria?.technical_depth || { rating: 3, notes: '' }
+    const prob = scorecard.problem_solving || scorecard.criteria?.problem_solving || { rating: 3, notes: '' }
+    const comm = scorecard.communication || scorecard.criteria?.communication || { rating: 3, notes: '' }
+    const notesText = scorecard.notes || scorecard.overall_notes || ''
+
+    store.addScorecard(applicationId, {
+      interviewerName: scorecard.interviewer_name || 'Evaluator',
+      overallRecommendation: scorecard.recommendation as any,
+      criteria: [
+        { name: 'Technical Depth', rating: tech.rating, feedback: tech.notes },
+        { name: 'Problem Solving', rating: prob.rating, feedback: prob.notes },
+        { name: 'Communication', rating: comm.rating, feedback: comm.notes },
+      ],
+      notes: notesText,
+    })
+    return {
+      id: `sc-${Date.now()}`,
+      application_id: applicationId,
+      interviewer_name: scorecard.interviewer_name || 'Evaluator',
+      recommendation: scorecard.recommendation,
+      technical_depth: tech,
+      problem_solving: prob,
+      communication: comm,
+      notes: notesText,
+      created_at: new Date().toISOString(),
+    }
+  },
+
+  getScorecards: async (applicationId: string): Promise<ScorecardRecord[]> => {
+    await sleep(150)
+    const store = useAppStore.getState()
+    const app = store.applications.find((a) => a.id === applicationId)
+    return (app?.scorecards || []).map((sc: any) => ({
+      id: sc.id,
+      application_id: applicationId,
+      interviewer_name: sc.interviewerName,
+      recommendation: sc.overallRecommendation,
+      notes: sc.notes || '',
+      created_at: sc.createdAt || new Date().toISOString(),
+    }))
+  },
+
+  getCandidateResumeUrl: (candidateId: string): string => {
+    return `${API_BASE_URL}/candidates/${encodeURIComponent(candidateId)}/resume`
   },
 
   getJobSkillGap: async (jobId: string): Promise<SkillGapResponse> => {
@@ -800,19 +949,90 @@ export const httpApi = {
     return fromApiJob(data)
   },
 
-  getJobRanking: async (jobId: string): Promise<JobRankingResponse> => {
-    const res = await fetch(`${API_BASE_URL}/jobs/${jobId}/ranking`)
+  getJobRanking: async (
+    jobId: string,
+    weights?: JobRankingWeightsParam
+  ): Promise<JobRankingResponse> => {
+    const params = new URLSearchParams()
+    if (weights) {
+      const s = weights.weights_skills ?? weights.skills
+      const exp = weights.weights_experience ?? weights.experience
+      const edu = weights.weights_education ?? weights.education
+      const sem = weights.weights_semantic ?? weights.semantic
+      if (s !== undefined) params.append('weights_skills', String(s))
+      if (exp !== undefined) params.append('weights_experience', String(exp))
+      if (edu !== undefined) params.append('weights_education', String(edu))
+      if (sem !== undefined) params.append('weights_semantic', String(sem))
+    }
+    const qs = params.toString() ? `?${params.toString()}` : ''
+    const res = await fetch(`${API_BASE_URL}/jobs/${jobId}/ranking${qs}`)
     checkSyntheticResponse(res)
     if (!res.ok) throw new ApiError(res.status, 'Failed to retrieve job rankings.')
     const data = await res.json()
     const parsed = JobRankingResponseSchema.parse(data)
     return {
       job_id: parsed.job_id,
+      weights_applied: parsed.weights_applied ?? undefined,
       candidates: parsed.candidates.map((c) => ({
         ...c,
         candidate: c.candidate ? fromApiCandidate(c.candidate) : undefined,
       })),
     } as unknown as JobRankingResponse
+  },
+
+  rematchJob: async (jobId: string): Promise<{ job_id: string; total_ranked: number; status: string }> => {
+    const res = await fetch(`${API_BASE_URL}/jobs/${jobId}/rematch`, {
+      method: 'POST',
+    })
+    checkSyntheticResponse(res)
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Rematch failed.' }))
+      throw new ApiError(res.status, err.detail || 'Failed to re-match candidates.')
+    }
+    return res.json()
+  },
+
+  mergeDuplicates: async (groupId: string, primaryCandidateId: string): Promise<Candidate> => {
+    const res = await fetch(`${API_BASE_URL}/duplicates/${encodeURIComponent(groupId)}/merge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ primary_candidate_id: primaryCandidateId }),
+    })
+    checkSyntheticResponse(res)
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to merge duplicate group.' }))
+      throw new ApiError(res.status, err.detail || 'Failed to merge duplicates.')
+    }
+    const data = await res.json()
+    const parsed = MergeDuplicatesResponseSchema.parse(data)
+    return fromApiCandidate(parsed.candidate)
+  },
+
+  createScorecard: async (applicationId: string, scorecard: ScorecardPayload): Promise<ScorecardRecord> => {
+    const res = await fetch(`${API_BASE_URL}/applications/${encodeURIComponent(applicationId)}/scorecards`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(scorecard),
+    })
+    checkSyntheticResponse(res)
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to submit scorecard.' }))
+      throw new ApiError(res.status, err.detail || 'Failed to submit scorecard.')
+    }
+    const data = await res.json()
+    return ScorecardRecordSchema.parse(data)
+  },
+
+  getScorecards: async (applicationId: string): Promise<ScorecardRecord[]> => {
+    const res = await fetch(`${API_BASE_URL}/applications/${encodeURIComponent(applicationId)}/scorecards`)
+    checkSyntheticResponse(res)
+    if (!res.ok) throw new ApiError(res.status, 'Failed to fetch scorecards.')
+    const data = await res.json()
+    return z.array(ScorecardRecordSchema).parse(data)
+  },
+
+  getCandidateResumeUrl: (candidateId: string): string => {
+    return `${API_BASE_URL}/candidates/${encodeURIComponent(candidateId)}/resume`
   },
 
   getJobSkillGap: async (jobId: string): Promise<SkillGapResponse> => {

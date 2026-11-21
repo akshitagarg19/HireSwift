@@ -1,0 +1,1 @@
+Plain text file. This type must be rejected by the upload endpoint (only PDF and DOCX are allowed).

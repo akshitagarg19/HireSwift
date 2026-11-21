@@ -1,0 +1,19 @@
+{
+  "name": "hireswift-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "lint": "npm --prefix frontend run lint",
+    "test": "npm --prefix frontend run test",
+    "test:watch": "npm --prefix frontend run test:watch",
+    "test:e2e": "npm --prefix frontend run test:e2e",
+    "verify:dist": "node scripts/verify-dist.mjs",
+    "demo:reset": "node scripts/demo-reset.mjs",
+    "release:check": "node scripts/release-check.mjs",
+    "qa": "node qa/run.mjs",
+    "qa:smoke": "node qa/smoke-live.mjs",
+    "qa:live": "node qa/run.mjs --live"
+  }
+}

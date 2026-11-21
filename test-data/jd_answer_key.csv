@@ -1,0 +1,6 @@
+jd_file,title,location,required_skills,preferred_skills,min_experience_years,min_cgpa,grad_years,hard_filter_pass_candidate_ids,hard_filter_pass_count
+full-stack-engineer.md,Full Stack Engineer,Bengaluru,React|Node.js,TypeScript|PostgreSQL|Docker|AWS,1,7.0,,C007|C011|C016|C024|C045,5
+python-data-engineer.md,Python Data Engineer,Noida,Python|SQL|Pandas,Airflow|Spark|AWS,2,7.5,,C010|C017|C033|C036,4
+frontend-react-lead.md,Frontend React Lead,Bengaluru,React|JavaScript|CSS,TypeScript|Tailwind CSS|GraphQL|Figma,3,7.0,,C000,1
+campus-graduate-trainee.md,Campus Graduate Trainee (2025/2026 batch),Pune,Python|SQL,Git|Java,0,7.0,2025|2026,C001|C005|C014|C021|C027|C030|C038|C044|C047|C049,10
+senior-backend-engineer.md,Senior Backend Engineer,Gurugram,Python|SQL|Docker,REST APIs|Kubernetes|Kafka|AWS|Redis,4,7.0,,C017|C024|C039,3

@@ -876,7 +876,8 @@ const server = http.createServer(async (req, res) => {
       rejected: ['applied'],
     }
 
-    const isUndo = Boolean(body.reason && /undo|revert/i.test(body.reason))
+    const strictTransitions = process.env.STUB_STRICT_TRANSITIONS === '1' || req.headers['x-stub-strict-transitions'] === '1'
+    const isUndo = !strictTransitions && Boolean(body.reason && /undo|revert/i.test(body.reason))
     const allowed = validTransitions[currentStage] || []
     if (!allowed.includes(targetStage) && !isUndo) {
       return sendJson(res, 400, {

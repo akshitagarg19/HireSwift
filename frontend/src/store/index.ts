@@ -661,17 +661,35 @@ export const useAppStore = create<AppStore>()(
       addScorecard: (applicationId: string, scorecardData: Omit<InterviewScorecard, 'id' | 'createdAt'>) => {
         const newScorecard: InterviewScorecard = {
           ...scorecardData,
-          id: `scorecard-${Date.now()}`,
+          id: (scorecardData as any).id || `scorecard-${Date.now()}`,
           createdAt: new Date().toISOString(),
         }
 
-        set((state) => ({
-          applications: state.applications.map((app) =>
-            app.id === applicationId
-              ? { ...app, scorecards: [...(app.scorecards || []), newScorecard] }
-              : app
-          ),
-        }))
+        set((state) => {
+          const exists = state.applications.some((app) => app.id === applicationId)
+          if (exists) {
+            return {
+              applications: state.applications.map((app) =>
+                app.id === applicationId
+                  ? { ...app, scorecards: [...(app.scorecards || []), newScorecard] }
+                  : app
+              ),
+            }
+          }
+          return {
+            applications: [
+              ...state.applications,
+              {
+                id: applicationId,
+                candidateId: '',
+                jobId: '',
+                stage: 'applied',
+                scorecards: [newScorecard],
+                appliedAt: new Date().toISOString(),
+              } as any,
+            ],
+          }
+        })
       },
 
       mergeDuplicates: (groupId: string, primaryCandidateId: string) => {

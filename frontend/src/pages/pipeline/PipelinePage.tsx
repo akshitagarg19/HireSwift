@@ -63,6 +63,7 @@ const KanbanCard: React.FC<KanbanCardProps> = ({ application, candidate, onClick
   return (
     <div
       ref={setNodeRef}
+      data-testid="kanban-card"
       {...listeners}
       {...attributes}
       role="article"
@@ -158,6 +159,7 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({ stage, applications, onCard
   return (
     <div
       ref={setNodeRef}
+      data-testid={`kanban-column-${stage.id}`}
       className={`flex flex-col w-72 bg-gray-50/80 rounded-xl border border-border shrink-0 max-h-[calc(100vh-220px)] transition-colors ${
         isOver ? 'bg-indigo-50/50 border-indigo-300 ring-2 ring-primary/10' : ''
       }`}
@@ -416,7 +418,12 @@ export const PipelinePage: React.FC = () => {
                 updateApplicationStage(appId, currentStage, 'Undo pipeline drag')
               }
             } catch (undoErr: any) {
-              toast.error(undoErr.message || 'Failed to revert stage move')
+              const serverMsg = undoErr.detail || undoErr.message || 'Failed to revert stage move'
+              toast.error(serverMsg)
+              if (!USE_MOCK) {
+                const refreshed = await api.getApplications(selectedJobId !== 'all' ? selectedJobId : undefined)
+                setLiveApplications(refreshed)
+              }
             }
           },
         },

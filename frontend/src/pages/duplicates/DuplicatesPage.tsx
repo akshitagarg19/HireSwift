@@ -190,8 +190,10 @@ export const DuplicatesPage: React.FC = () => {
     try {
       if (!USE_MOCK) {
         await api.mergeDuplicates(selectedGroup.id, primaryCandId)
+        await fetchCandidates()
+      } else {
+        mergeDuplicates(selectedGroup.id, primaryCandId)
       }
-      mergeDuplicates(selectedGroup.id, primaryCandId)
       setMergeModalOpen(false)
       toast.success('Duplicate profiles merged successfully!')
     } catch (err: any) {

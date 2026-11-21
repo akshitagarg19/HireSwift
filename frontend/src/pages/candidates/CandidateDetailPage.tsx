@@ -131,6 +131,7 @@ export const CandidateDetailPage: React.FC = () => {
 
   // Scorecard evaluation state
   const [serverScorecards, setServerScorecards] = useState<ScorecardRecord[]>([])
+  const [localDeviceScorecards, setLocalDeviceScorecards] = useState<any[]>([])
   const [interviewerName, setInterviewerName] = useState('')
   const [scorecardRecommendation, setScorecardRecommendation] = useState<
     'Strong Yes' | 'Yes' | 'Neutral' | 'No' | 'Strong No'
@@ -143,6 +144,7 @@ export const CandidateDetailPage: React.FC = () => {
   const [commNotes, setCommNotes] = useState('')
   const [scorecardNotes, setScorecardNotes] = useState('')
   const [isSubmittingScorecard, setIsSubmittingScorecard] = useState(false)
+  const [scorecardError, setScorecardError] = useState<{ status?: number; detail: string } | null>(null)
 
   // Active job and application for matching
   const activeJob = companyJobs.find((j) => j.id === selectedJobId)
@@ -263,6 +265,41 @@ export const CandidateDetailPage: React.FC = () => {
     setIsEditing(true)
   }
 
+  const resetScorecardForm = () => {
+    setTechNotes('')
+    setProblemNotes('')
+    setCommNotes('')
+    setScorecardNotes('')
+    setInterviewerName('')
+    setScorecardError(null)
+  }
+
+  const saveScorecardLocally = (reviewer: string) => {
+    if (!activeApp) return
+    const newSc = {
+      id: `local-${Date.now()}`,
+      interviewerName: reviewer,
+      overallRecommendation: scorecardRecommendation,
+      criteria: [
+        { name: 'Technical Depth', rating: techRating, feedback: techNotes.trim() },
+        { name: 'Problem Solving', rating: problemRating, feedback: problemNotes.trim() },
+        { name: 'Communication', rating: commRating, feedback: commNotes.trim() },
+      ],
+      notes: scorecardNotes.trim(),
+      isDeviceOnly: true,
+      createdAt: new Date().toISOString(),
+    }
+    setLocalDeviceScorecards((prev) => [newSc, ...prev])
+    addScorecard(activeApp.id, newSc as any)
+    resetScorecardForm()
+  }
+
+  const handleSaveDeviceInstead = () => {
+    const reviewerName = interviewerName.trim() || 'Evaluator'
+    saveScorecardLocally(reviewerName)
+    toast.info('Saved on this device only')
+  }
+
   const handleSubmitScorecard = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!activeApp) {
@@ -270,6 +307,7 @@ export const CandidateDetailPage: React.FC = () => {
       return
     }
 
+    setScorecardError(null)
     setIsSubmittingScorecard(true)
     const reviewerName = interviewerName.trim() || 'Evaluator'
 
@@ -293,43 +331,30 @@ export const CandidateDetailPage: React.FC = () => {
       },
     }
 
-    let savedToServer = false
     if (!USE_MOCK) {
       try {
         const created = await api.createScorecard(activeApp.id, payload)
         setServerScorecards((prev) => [created, ...prev])
-        savedToServer = true
+        resetScorecardForm()
         toast.success('Interview scorecard submitted!')
-      } catch {
-        savedToServer = false
+      } catch (err: any) {
+        if (err.status === 404 || err.status === 405) {
+          saveScorecardLocally(reviewerName)
+          toast.info('Saved on this device only (server has no scorecard endpoint)')
+        } else {
+          const detail = err.detail || err.message || 'Internal server error'
+          const errorMsg = `Could not save: ${err.status ? err.status + ' ' : ''}${detail}`
+          setScorecardError({ status: err.status, detail })
+          toast.error(errorMsg)
+        }
+      } finally {
+        setIsSubmittingScorecard(false)
       }
+    } else {
+      saveScorecardLocally(reviewerName)
+      toast.success('Interview scorecard submitted!')
+      setIsSubmittingScorecard(false)
     }
-
-    if (!savedToServer) {
-      addScorecard(activeApp.id, {
-        interviewerName: reviewerName,
-        overallRecommendation: scorecardRecommendation,
-        criteria: [
-          { name: 'Technical Depth', rating: techRating, feedback: techNotes.trim() },
-          { name: 'Problem Solving', rating: problemRating, feedback: problemNotes.trim() },
-          { name: 'Communication', rating: commRating, feedback: commNotes.trim() },
-        ],
-        notes: scorecardNotes.trim(),
-        isDeviceOnly: true,
-      } as any)
-      if (!USE_MOCK) {
-        toast.info('Scorecard saved on this device only (server sync not supported)')
-      } else {
-        toast.success('Interview scorecard submitted!')
-      }
-    }
-
-    setIsSubmittingScorecard(false)
-    setTechNotes('')
-    setProblemNotes('')
-    setCommNotes('')
-    setScorecardNotes('')
-    setInterviewerName('')
   }
 
   return (
@@ -698,7 +723,7 @@ export const CandidateDetailPage: React.FC = () => {
               <TabsTrigger value="resume">Resume Document</TabsTrigger>
               <TabsTrigger value="notes">Notes ({activeApp?.notes.length || 0})</TabsTrigger>
               <TabsTrigger value="scorecard">
-                Scorecards ({USE_MOCK ? activeApp?.scorecards?.length || 0 : serverScorecards.length + (activeApp?.scorecards?.filter((s: any) => s.isDeviceOnly)?.length || 0)})
+                Scorecards ({USE_MOCK ? activeApp?.scorecards?.length || 0 : serverScorecards.length + localDeviceScorecards.length + (activeApp?.scorecards?.filter((s: any) => s.isDeviceOnly)?.length || 0)})
               </TabsTrigger>
               <TabsTrigger value="timeline">Stage Timeline</TabsTrigger>
               <TabsTrigger value="raw-text">Resume Raw Text</TabsTrigger>
@@ -922,6 +947,31 @@ export const CandidateDetailPage: React.FC = () => {
                   />
                 </div>
 
+                {scorecardError && (
+                  <div
+                    className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs space-y-2"
+                    data-testid="scorecard-error-banner"
+                  >
+                    <div className="flex items-start justify-between">
+                      <span className="text-rose-800 font-medium">
+                        Could not save: {scorecardError.status ? `${scorecardError.status} ` : ''}{scorecardError.detail}
+                      </span>
+                    </div>
+                    <div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="text-rose-700 border-rose-300 hover:bg-rose-100"
+                        onClick={handleSaveDeviceInstead}
+                        data-testid="save-device-instead-btn"
+                      >
+                        Save on this device instead
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 <Button
                   type="submit"
                   variant="primary"
@@ -939,9 +989,20 @@ export const CandidateDetailPage: React.FC = () => {
                   Submitted Evaluations
                 </h4>
                 {(() => {
+                  const storeApp = applications.find(
+                    (a) => a.id === activeApp?.id || (a as any).application_id === activeApp?.id
+                  )
+                  const storeScorecards = (storeApp?.scorecards || []).filter((s: any) => s.isDeviceOnly || USE_MOCK)
+                  const appScorecards = (activeApp?.scorecards || []).filter((s: any) => s.isDeviceOnly || USE_MOCK)
                   const combined = [
                     ...serverScorecards,
-                    ...((activeApp?.scorecards || []).filter((s: any) => s.isDeviceOnly || USE_MOCK)),
+                    ...localDeviceScorecards,
+                    ...appScorecards.filter((s: any) => !localDeviceScorecards.some((l) => l.id === s.id)),
+                    ...storeScorecards.filter(
+                      (s: any) =>
+                        !localDeviceScorecards.some((l) => l.id === s.id) &&
+                        !appScorecards.some((a) => a.id === s.id)
+                    ),
                   ]
 
                   if (combined.length === 0) {

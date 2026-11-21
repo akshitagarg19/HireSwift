@@ -1,6 +1,6 @@
 # HireSwift ATS Quality Assurance & Verification Report
 
-> **Execution Timestamp:** 2026-11-21T06:03:01.893Z  
+> **Execution Timestamp:** 2026-11-21T06:49:22.436Z  
 > **Evaluation Mode:** `STUB`  
 > **Target Base URL:** `http://127.0.0.1:8000/api`  
 > **Dataset:** 56 resumes (50 unique candidates + 6 duplicate files), 5 JDs, 3 edge cases, 14 canonical filter test cases.
@@ -153,69 +153,67 @@
 
 ---
 
-## 8.1 Live-Mode Results (Awaiting Backend Benchmark)
+## 8. Live-mode results
 
-> To populate this benchmark table with real model accuracy and latency figures, start Akshita's live backend and execute:  
-> `QA_MODE=live QA_BASE_URL=<backend-url>/api npm run qa`
-
-| Metric | Target / SLA | Live Measured Value | Verification Status |
-|---|---|---|---|
-| **Bulk Resume Ingestion (56 files)** | < 30 s total | *[Awaiting live backend execution]* | ⏳ Pending Live Run |
-| **Top 10 Field Extraction Accuracy** | >= 85% accuracy | *[Awaiting live backend execution]* | ⏳ Pending Live Run |
-| **Canonical Skills Extraction F1** | >= 80% F1 score | *[Awaiting live backend execution]* | ⏳ Pending Live Run |
-| **Server Filter Latency (p50)** | < 200 ms | *[Awaiting live backend execution]* | ⏳ Pending Live Run |
-| **Server Filter Latency (p95)** | < 500 ms | *[Awaiting live backend execution]* | ⏳ Pending Live Run |
-| **Deduplication Precision** | >= 95% | *[Awaiting live backend execution]* | ⏳ Pending Live Run |
-| **Deduplication Recall** | >= 90% | *[Awaiting live backend execution]* | ⏳ Pending Live Run |
-| **Hard-Filter Ranking Consistency** | 100% (0 inversions) | *[Awaiting live backend execution]* | ⏳ Pending Live Run |
-
----
-
-## 9. Bug Tracking & Categorization
-
-### 1. Frontend Bugs (Identified & Fixed):
-- **EmptyState DOM Prop Forwarding:** Fixed `EmptyState` component to pass `...props` and HTML attributes to root container so that `data-testid` and test assertions mount reliably.
-- **Upload Page Job Selection:** Removed fallback to mock store jobs in live mode; now displays dedicated EmptyState when no jobs exist and allows seamless upload to general talent pool.
-- **Score Ring Null Handling:** Replaced hardcoded default `75` scores with explicit nullable score representation (`-`) and empty SVG rings for unscored profiles.
-- **`exp_max=0` Boolean Coercion (`0 || 10`):** Fixed query parameter parsing in `CandidatesPage.tsx` where `exp_max=0` (Freshers filter test F12) was erroneously coerced to `10` via `parseFloat(...) || 10`.
-- **Candidates Page External URL Sync:** Added bidirectional synchronization in `CandidatesPage.tsx` so URL query parameters drive filter state and vice-versa seamlessly across navigation and test runners.
-- **Missing / Null Numeric Field Styling:** Updated Candidate Drawer to render missing CGPA, 10th/12th percentages, and experience as `"-"` with amber low-confidence styling rather than `0` or empty slash ` / 10`.
-- **Single-Lead Duplicate Card Rendering:** In `DuplicatesPage.tsx`, handled single-candidate groups flagged with `is_duplicate` from API bulk ingestion, synthesizing the duplicate submission counterpart so the diff view and trigger signals render cleanly.
-- **Candidates Page Error Resilience:** Added ErrorPanel with Retry button when `serverError` occurs in `CandidatesPage.tsx`, avoiding fallback to seed data.
-- **Store Seed Data Isolation in Live Mode:** Decoupled `UploadPage`, `PipelinePage`, `JobsPage`, `JobDetailPage`, `JobCreatePage`, `CandidateDetailPage`, `ComparePage`, `InsightsPage`, `DuplicatesPage`, and `EmailsPage` from store seed data in live mode (`!USE_MOCK`).
-
-### 2. Backend / Contract Alignment (For Akshita):
-- **`job_id` Form Field:** Verify backend `POST /resumes/bulk` accepts optional `job_id` form parameter to link newly parsed resumes to the active job requisition.
-- **Application ID Uniformity:** Backend `GET /applications` must return `application_id` (matching `GET /jobs/{id}/ranking`) rather than `id`.
-- **Embedded Candidate Summary:** Ensure `GET /applications` includes candidate summaries `{ name, college, location, cgpa, skills, is_duplicate }` for zero-latency Kanban rendering.
-
-### 3. Data / Key Consistency:
-- All 14 known-answer queries in `filter_tests.csv` pass 100% against unique candidates without any manual modification to the ground truth dataset.
+| Metric | Value | Run Date |
+|---|---|---|
+| Bulk Resume Ingestion (56 files) | not run yet | not run yet |
+| Ingestion Failed Files | not run yet | not run yet |
+| Top 10 Field Extraction Accuracy | not run yet | not run yet |
+| Canonical Skills Extraction F1 | not run yet | not run yet |
+| Hallucinated Field Values | not run yet | not run yet |
+| Server Filter Pass Rate (F01–F14) | not run yet | not run yet |
+| Server Filter Latency (p50) | not run yet | not run yet |
+| Server Filter Latency (p95) | not run yet | not run yet |
+| Deduplication Precision | not run yet | not run yet |
+| Deduplication Recall | not run yet | not run yet |
+| Hard-Filter Ranking Monotonicity | not run yet | not run yet |
+| Pipeline Valid Transitions | not run yet | not run yet |
+| Candidate Compare Constraints | not run yet | not run yet |
 
 ---
 
-## 10. Store Usage Audit (Live Mode Isolation)
+## 9. Store audit
 
-| Page Component | Store Fields Read | Live Mode Data Source | Store Data Fallback Eliminated? |
+| Page Component | Store Fields Read | Live Mode Data Source | Reads Data from Store in Live Mode? |
 |---|---|---|---|
-| `HomePage.tsx` | `currentUser`, `login` | Static landing page / interactive demo state | ✅ Yes (No candidate/job data in store) |
-| `LoginPage.tsx` | `login` | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |
-| `SignupPage.tsx` | `registerCompany` | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |
-| `OnboardingPage.tsx` | `currentCompanyId`, `companies`, ... | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |
-| `SettingsPage.tsx` | `currentCompanyId`, `currentUser`, ... | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |
-| `DashboardPage.tsx` | `currentCompanyId`, `companies`, ... | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |
-| `FairnessPage.tsx` | `currentCompanyId`, `companies`, ... | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |
-| `CareersPage.tsx` | `companies`, `jobs` | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |
-| `JobApplicationPage.tsx` | `companies`, `jobs`, ... | Disabled by scope flags (redirects to `/app/candidates`) | ✅ Yes |
-| `UploadPage.tsx` | `currentCompanyId`, `jobs`, `candidates` | `api.getJobs()`, `api.bulkUpload()` | ✅ Yes (Sample ingestion removed; empty state if no jobs) |
-| `CandidatesPage.tsx` | `currentCompanyId`, `currentUser`, `candidates`, `duplicateGroups`, `isBlindMode` | `api.getCandidates(params)`, `api.patchCandidate()` | ✅ Yes (Server-driven; duplicate signals from API; `DEFAULT_DEMO_COMPANY`) |
-| `JobsPage.tsx` | `currentCompanyId`, `currentUser`, `jobs`, `applications` | `api.getJobs()`, `api.patchJob()`, `api.deleteJob()` | ✅ Yes (Reads `liveJobs`; applicant count from `job.applicantCount`) |
-| `JobDetailPage.tsx` | `jobs`, `candidates`, `applications`, `companies`, `isBlindMode` | `api.getJob()`, `api.getApplications()`, `api.getJobSkillGap()` | ✅ Yes (All reads from API; zero fallback to store lists) |
-| `JobCreatePage.tsx` | `currentCompanyId`, `addJob` | `api.createJob()` | ✅ Yes (`addJob` store call bypassed in live mode) |
-| `PipelinePage.tsx` | `companies`, `currentCompanyId`, `currentUser`, `isBlindMode` | `api.getApplications(jobId)`, `api.moveApplication()` | ✅ Yes (Cards rendered from embedded summaries; no candidate store reads) |
-| `ComparePage.tsx` | `currentCompanyId`, `candidates`, `jobs`, `isBlindMode` | `api.compareCandidates(ids)` | ✅ Yes (Loaded via API; `DEFAULT_DEMO_COMPANY` settings) |
-| `InsightsPage.tsx` | `currentCompanyId`, `candidates`, `jobs`, `applications` | `api.getJobs()`, `api.getApplications()`, `api.getJobSkillGap()` | ✅ Yes (Aggregations and skill gap loaded from API) |
-| `DuplicatesPage.tsx` | `currentCompanyId`, `duplicateGroups`, `candidates`, `isBlindMode` | `api.getCandidates({ include_unknown: true })` | ✅ Yes (Groups clustered from API candidate flags; store ignored) |
-| `EmailsPage.tsx` | `currentCompanyId`, `companies`, `candidates`, `jobs`, `applications` | `api.getCandidates()`, `api.getJobs()`, `api.getApplications()` | ✅ Yes (Static `DEFAULT_EMAIL_TEMPLATES` & live API datasets) |
-| `CandidateDetailPage.tsx` | `candidates`, `applications`, `jobs`, `stageHistories`, `isBlindMode` | `api.getCandidate(id)`, `api.getApplications()` | ✅ Yes (Detail & applications fetched from API; fallback eliminated) |
+| `HomePage.tsx` | `currentUser`, `login` | Static landing page / interactive demo state | ❌ No |
+| `LoginPage.tsx` | `login` | Disabled by scope flags (redirects to `/app/candidates`) | ❌ No |
+| `SignupPage.tsx` | `registerCompany` | Disabled by scope flags (redirects to `/app/candidates`) | ❌ No |
+| `OnboardingPage.tsx` | `currentCompanyId`, `companies` | Disabled by scope flags (redirects to `/app/candidates`) | ❌ No |
+| `SettingsPage.tsx` | `currentCompanyId`, `currentUser`, `updateCompanySettings` | Disabled by scope flags (redirects to `/app/candidates`) | ❌ No |
+| `DashboardPage.tsx` | `isBlindMode` | `api.getJobs()`, `api.getApplications()`, `api.getCandidates()`, `api.getJobRanking()`, `api.getJobSkillGap()` | ❌ No |
+| `UploadPage.tsx` | `currentCompanyId`, `jobs`, `candidates` | `api.getJobs()`, `api.bulkUpload()` | ❌ No |
+| `CandidatesPage.tsx` | `currentCompanyId`, `currentUser`, `candidates`, `duplicateGroups`, `isBlindMode` | `api.getCandidates(params)`, `api.patchCandidate()` | ❌ No |
+| `CandidateDetailPage.tsx` | `candidates`, `applications`, `jobs`, `stageHistories`, `isBlindMode` | `api.getCandidate(id)`, `api.getApplications()` | ❌ No |
+| `JobsPage.tsx` | `currentCompanyId`, `currentUser`, `jobs`, `applications` | `api.getJobs()`, `api.patchJob()`, `api.deleteJob()` | ❌ No |
+| `JobDetailPage.tsx` | `jobs`, `candidates`, `applications`, `companies`, `isBlindMode` | `api.getJob()`, `api.getApplications()`, `api.getJobSkillGap()` | ❌ No |
+| `JobCreatePage.tsx` | `currentCompanyId`, `addJob` | `api.createJob()` | ❌ No |
+| `PipelinePage.tsx` | `companies`, `currentCompanyId`, `currentUser`, `isBlindMode` | `api.getApplications(jobId)`, `api.moveApplication()` | ❌ No |
+| `ComparePage.tsx` | `currentCompanyId`, `candidates`, `jobs`, `isBlindMode` | `api.compareCandidates(ids)` | ❌ No |
+| `InsightsPage.tsx` | `currentCompanyId`, `candidates`, `jobs`, `applications` | `api.getJobs()`, `api.getApplications()`, `api.getJobSkillGap()` | ❌ No |
+| `DuplicatesPage.tsx` | `currentCompanyId`, `duplicateGroups`, `candidates`, `isBlindMode` | `api.getCandidates({ include_unknown: true })` | ❌ No |
+| `EmailsPage.tsx` | `currentCompanyId`, `companies`, `candidates`, `jobs`, `applications` | `api.getCandidates()`, `api.getJobs()`, `api.getApplications()` | ❌ No |
+| `FairnessPage.tsx` | `currentCompanyId`, `companies`, `updateCompanySettings` | Disabled by scope flags (redirects to `/app/candidates`) | ❌ No |
+| `CareersPage.tsx` | `companies`, `jobs` | Disabled by scope flags (redirects to `/app/candidates`) | ❌ No |
+| `JobApplicationPage.tsx` | `companies`, `jobs` | Disabled by scope flags (redirects to `/app/candidates`) | ❌ No |
+
+---
+
+## 10. Real Live-Mode Actions & Contract Hardening Verification
+
+> **Test Suite:** `frontend/e2e/live-actions.spec.ts`  
+> **Evaluation Mode:** Live Mode Contract Verification (`VITE_USE_MOCK=false`)
+
+| Live Action / Capability | Implementation & Contract Behavior | Test Status | Evidence & Guarantees |
+|---|---|---|---|
+| **Bulk Shortlist & Move** | Replaced mock store mutation with `Promise.allSettled` concurrency 5 calling `POST /applications/{id}/move`. Added target job requisition picker (`[data-testid="bulk-job-picker"]`). | ✅ PASS | 3 candidate moves executed concurrently; partial failure reports server detail per failed candidate. |
+| **Duplicates Merge & Banner** | Calls `POST /duplicates/{groupId}/merge`. If server returns 404, 405, or 501, displays notice banner `"Merge is not enabled on this server"` (`[data-testid="merge-disabled-banner"]`) and disables button. In live mode, refetches candidates from API and never calls store mutation. | ✅ PASS | Verified normal merge 200 flow, API refetch on merge, and 404 disabled banner fallback. |
+| **Structured Scorecards** | Interview evaluation form submitting technical depth, problem solving, communication (1-5 ratings + notes), recommendation, and overall notes to `POST /applications/{id}/scorecards`. 404/405 persists locally with `"Saved on this device only (server has no scorecard endpoint)"`. 5xx/network errors prompt user before saving locally. | ✅ PASS | Form submits typed values, validates required inputs, updates scorecard list, handles 404 and 500 cleanly. |
+| **Custom Scoring Weights** | Debounced (300ms) weight slider changes passing custom query params (`weights_skills`, `weights_experience`, etc.) to `GET /jobs/{id}/ranking`. Displays notice banner `"This server ignored custom weights; ranking is unchanged."` (`[data-testid="weights-ignored-notice"]`) if server omits `weights_applied`. | ✅ PASS | Sliders send debounced query params; notice banner mounts when weights are unhandled by server. |
+| **Original Resume Viewer** | Reusable `ResumeViewer` component supporting embedded PDF preview (`<object data-testid="resume-pdf-viewer">`), prominent DOCX download button (`[data-testid="download-docx-btn"]`) with side-by-side parsed fields, amber extraction confidence indicators (< 0.7 or missing), 404 empty state (`[data-testid="resume-not-found"]`), and Blind hiring mode redaction. | ✅ PASS | Verified PDF embedding (`C001`), DOCX download trigger (`C000`), 404 missing state, and extraction confidence indicators. |
+| **Saved Filters** | Filter presets persisted in `localStorage` under `'hireswift_saved_filters'` labeled `"Saved on this device only"` (`[data-testid="saved-filters-dropdown"]`, `[data-testid="save-filter-btn"]`). Auto-debounced text queries (300ms). | ✅ PASS | Filter saved locally, recalled after full page reload, and synchronizes URL query params. |
+| **Ground-Truth CSV Export** | Export candidate directory with exact headers `name,email,phone,city,college,degree,grad_year,cgpa_10,tenth_pct,twelfth_pct,experience_years,skills,stage,match_score` with empty cells for null/missing metrics (never `0` or `75`). Supports pagination up to 1,000 candidates with progress toast. | ✅ PASS | Downloaded CSV verified for header format and empty cells for null fields. |
+| **Kanban Move & Undo** | 8-second Sonner undo toast on Kanban stage transition with action button calling `POST /applications/{id}/move` to restore previous stage. On server rejection (400/409), displays server message and refetches to keep card where server says it is. | ✅ PASS | Kanban move advances card, displays Undo toast; undo rejection refetches and snaps card to server position. |
+| **Global Keyboard Shortcuts** | Global hotkeys: `?` opens Shortcuts Cheat Sheet modal (`[data-testid="shortcuts-modal"]`), `/` focuses candidate search bar, `g c`, `g p`, `g d` navigate to Candidates, Pipeline, and Dashboard, and `s` toggles shortlist for selected candidates. | ✅ PASS | Verified keyboard events and modal trigger button (`[data-testid="shortcuts-help-trigger"]`). |
 

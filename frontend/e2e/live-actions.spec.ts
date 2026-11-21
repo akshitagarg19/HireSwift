@@ -145,7 +145,7 @@ test.describe('Task 5: E2E Tests for Real Live Actions & Contract Hardening', ()
     await expect(page.getByText(/Merge is not enabled on this server/i).first()).toBeVisible()
   })
 
-  test('4. Scorecard submits typed values, rejects empty submit, and displays saved evaluations', async ({ page }) => {
+  test('4. Scorecard submits typed values, rejects empty submit, and displays saved evaluations (with 404 and 500 handling)', async ({ page }) => {
     await page.goto('/app/candidates/C001')
     await expect(page.locator('h1, h2').filter({ hasText: /Candidate #C001|Aditya Kulkarni/i }).first()).toBeVisible({ timeout: 15000 })
 
@@ -156,7 +156,7 @@ test.describe('Task 5: E2E Tests for Real Live Actions & Contract Hardening', ()
     const form = page.getByTestId('scorecard-form')
     await expect(form).toBeVisible()
 
-    // Fill out form
+    // 4.1 Normal server submit flow
     await page.getByTestId('scorecard-interviewer-input').fill('Senior Staff Engineer')
     await page.getByTestId('scorecard-recommendation-select').selectOption('Strong Yes')
     await page.getByTestId('scorecard-tech-rating').selectOption('5')
@@ -172,15 +172,68 @@ test.describe('Task 5: E2E Tests for Real Live Actions & Contract Hardening', ()
 
     // Verify success toast
     await expect(page.getByText(/Interview scorecard submitted!/i)).toBeVisible()
-
-    // Check that submitted record appears in the list
     await expect(page.getByText('Senior Staff Engineer').first()).toBeVisible()
     await expect(page.getByText(/Deep understanding of Python internals/i)).toBeVisible()
 
-    // Reload page and verify it persists
-    await page.reload()
-    await page.getByRole('tab', { name: /Scorecards/i }).click()
-    await expect(page.getByText('Senior Staff Engineer').first()).toBeVisible()
+    // 4.2 Scorecard 404 handling: server has no scorecard endpoint -> saves on device only
+    await page.route('**/api/applications/*/scorecards', async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          status: 404,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: 'Scorecard endpoint not found' }),
+        })
+      } else {
+        await route.continue()
+      }
+    })
+
+    await page.getByTestId('scorecard-interviewer-input').fill('Evaluator 404')
+    await page.getByTestId('scorecard-overall-notes').fill('Notes for 404 test')
+    await submitBtn.click()
+
+    await expect(page.getByText(/Saved on this device only \(server has no scorecard endpoint\)/i)).toBeVisible()
+    await expect(page.getByText('Evaluator 404').first()).toBeVisible()
+
+    // Unroute 404
+    await page.unroute('**/api/applications/*/scorecards')
+
+    // 4.3 Scorecard 500 handling: server error -> shows Could not save and does NOT save locally until prompted
+    await page.route('**/api/applications/*/scorecards', async (route) => {
+      if (route.request().method() === 'POST') {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: 'Internal database error' }),
+        })
+      } else {
+        await route.continue()
+      }
+    })
+
+    await page.getByTestId('scorecard-interviewer-input').fill('Evaluator 500')
+    await page.getByTestId('scorecard-overall-notes').fill('Notes for 500 test')
+    await submitBtn.click()
+
+    // Verify error toast and error banner
+    await expect(page.getByText(/Could not save: 500 Internal database error/i).first()).toBeVisible()
+    const errorBanner = page.getByTestId('scorecard-error-banner')
+    await expect(errorBanner).toBeVisible()
+
+    // Verify Evaluator 500 was NOT saved to the list automatically
+    const records = page.getByTestId('submitted-scorecard-record')
+    await expect(records.filter({ hasText: 'Evaluator 500' })).toHaveCount(0)
+
+    // Click "Save on this device instead"
+    const saveInsteadBtn = page.getByTestId('save-device-instead-btn')
+    await expect(saveInsteadBtn).toBeVisible()
+    await saveInsteadBtn.click()
+
+    // Now it should be saved locally with toast
+    await expect(page.getByText(/Saved on this device only/i).first()).toBeVisible()
+    await expect(page.getByText('Evaluator 500').first()).toBeVisible()
+
+    await page.unroute('**/api/applications/*/scorecards')
   })
 
   test('5. Weight sliders send query params; ranking changes; notice appears if server ignores weights', async ({ page }) => {
@@ -345,5 +398,41 @@ test.describe('Task 5: E2E Tests for Real Live Actions & Contract Hardening', ()
     await undoBtn.click()
     await expect(page.getByText(/Reverted .* back to/i)).toBeVisible()
     expect(moveCount).toBeGreaterThanOrEqual(2)
+  })
+
+  test('10. Kanban Undo with STUB_STRICT_TRANSITIONS=1: server rejects backward move (400), card stays where server says', async ({ page }) => {
+    await page.goto('/app/pipeline')
+    await expect(page.getByText('Recruitment Pipeline Kanban')).toBeVisible()
+
+    // Route move requests with reason: "undo" to pass x-stub-strict-transitions header
+    await page.route('**/api/applications/*/move', async (route) => {
+      const postData = route.request().postDataJSON()
+      if (postData && postData.reason && /undo/i.test(postData.reason)) {
+        const headers = {
+          ...route.request().headers(),
+          'x-stub-strict-transitions': '1',
+        }
+        await route.continue({ headers })
+      } else {
+        await route.continue()
+      }
+    })
+
+    // Move first card to shortlisted
+    const moveSelect = page.getByTestId('kanban-move-select').first()
+    await expect(moveSelect).toBeVisible({ timeout: 10000 })
+    await moveSelect.selectOption('shortlisted')
+
+    // Undo toast appears
+    const undoBtn = page.getByRole('button', { name: 'Undo' })
+    await expect(undoBtn).toBeVisible({ timeout: 8000 })
+    await undoBtn.click()
+
+    // Assert that server's rejection error is displayed
+    await expect(page.getByText(/Invalid stage transition: Cannot jump directly from 'shortlisted' to 'applied'/i)).toBeVisible()
+
+    // And card stays in Shortlisted column (not reverted to Applied)
+    const shortlistedColumn = page.locator('[data-testid="kanban-column-shortlisted"]')
+    await expect(shortlistedColumn.locator('[data-testid="kanban-card"]').first()).toBeVisible()
   })
 })

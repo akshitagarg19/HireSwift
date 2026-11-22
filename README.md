@@ -1,262 +1,416 @@
-# HireSwift — Intelligent ATS for Growing Hiring Teams
+# ⚡ HireSwift — Smart Applicant Tracking System
 
-**GitHub Repository**: [https://github.com/akshitagarg19/HireSwift](https://github.com/akshitagarg19/HireSwift)  
-**Live Demo URL**: [add live URL after deployment]  
-**Authors**: **Akshita** *(Backend & API)* & **Ayush** *(Frontend & Test Data)*  
+**HireSwift** is a full-stack Applicant Tracking System (ATS) designed to simplify recruitment through automated resume parsing, candidate management, job postings, skill-based ranking, and hiring pipeline management.
 
----
+The application combines a **React + TypeScript frontend** with a **FastAPI backend**, providing a centralized interface for recruiters to manage candidates and job applications.
 
-## 🚀 Overview
+## 🌐 Live Deployment
 
-**HireSwift** is a modern, high-velocity Applicant Tracking System (ATS) tailored for hiring teams. Built with **React 18**, **TypeScript**, **Tailwind CSS**, and **Zustand**, HireSwift provides explainable match scoring against any Job Description, tri-state skill filtering (`AND` / `OR` / `NOT`), slide-over candidate drawers with in-place profile editing, Kanban pipeline management with transition guardrails, 2-to-3 candidate comparisons, duplicate detection, blind recruiting mode, and seamless FastAPI integration.
+| Component | URL |
+|---|---|
+| **Live Application** | https://hire-swift.vercel.app/ |
+| **Backend API** | https://hireswift-2sk5.onrender.com/ |
+| **Swagger API Documentation** | https://hireswift-2sk5.onrender.com/docs |
+| **API Health Check** | https://hireswift-2sk5.onrender.com/health |
+| **GitHub Repository** | https://github.com/akshitagarg19/HireSwift |
 
-The live application runs in a streamlined **single-tenant live demo** configuration without authentication gates:
-- Root (`/`) serves the landing page.
-- `/app` routes directly to `/app/dashboard`.
-- Navigation sidebar includes: **Dashboard**, **Upload**, **Candidates**, **Jobs**, **Pipeline**, **Compare**, **Insights**, **Duplicates**, and **Emails**.
-- **Blind Mode**: Top-bar toggle masks candidate name ("Candidate #ID"), college, and location across Dashboard, Candidates, Ranking, Pipeline, Compare, and Candidate Drawer. Persisted across page reloads.
+**Deployment Platforms:**
+- Frontend: Vercel
+- Backend: Render
+- Database: SQLite
 
-### ⚡ 5-Command Quickstart
+## 🚀 Features
 
-Get HireSwift running locally in 5 commands:
+### 1. Resume Upload and Parsing
+- Bulk upload PDF and DOCX resumes.
+- Supports files up to 10 MB each.
+- Extracts candidate information, including contact details, skills, education, and experience when available.
+- Tracks batch processing progress.
+- Detects duplicate resume submissions.
+
+### 2. Candidate Management
+- Centralized candidate directory.
+- Search and filter candidates.
+- Filter by skills, CGPA, experience, location, and graduation year.
+- View detailed candidate profiles.
+- Edit candidate information.
+
+### 3. Job Management
+- Create and manage job openings.
+- Define job requirements and required skills.
+- Edit existing job information.
+- View applicants associated with job openings.
+
+### 4. Candidate Ranking
+- Rank candidates against job requirements.
+- Display candidate match scores when sufficient matching data is available.
+- Show skill matching information and ranking breakdowns.
+
+### 5. Recruitment Pipeline
+The application provides a five-stage recruitment workflow:
+
+1. Applied
+2. Shortlisted
+3. Interview
+4. Offer
+5. Rejected
+
+The interface supports moving candidates through recruitment stages and viewing application history.
+
+### 6. Candidate Comparison
+- Compare two or three candidates.
+- Review qualifications and skills side by side.
+- Highlight differences between candidate profiles.
+
+### 7. Recruitment Insights
+- Skill-gap analysis.
+- Recruitment pipeline insights.
+- Visualizations to support hiring decisions.
+
+### 8. Additional Frontend Features
+- Duplicate candidate detection interface.
+- Bulk email interface.
+- Blind hiring mode.
+- Responsive dashboard.
+- Saved candidate filters.
+
+**Note:** Some advanced features are implemented in the application but have not yet completed live end-to-end verification.
+
+## 🛠️ Technology Stack
+
+| Layer | Technologies |
+|---|---|
+| Frontend | React, TypeScript, Vite |
+| Styling | Tailwind CSS |
+| State Management | Zustand |
+| Validation | Zod |
+| Backend | Python, FastAPI |
+| API Server | Uvicorn |
+| Database | SQLite |
+| Resume Parsing | pypdf, python-docx |
+| Backend Testing | Pytest |
+| Frontend Testing | Vitest, Playwright |
+| Frontend Hosting | Vercel |
+| Backend Hosting | Render |
+| Version Control | Git, GitHub |
+
+## 📁 Project Structure
+
+```text
+HireSwift/
+├── backend/
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── db.py
+│   │   └── parser.py
+│   ├── tests/
+│   │   └── test_api.py
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── .env.example
+│
+├── frontend/
+│   ├── src/
+│   │   ├── api/
+│   │   └── ...
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── vercel.json
+│
+├── docs/
+├── qa/
+├── scripts/
+├── test-data/
+├── API.md
+└── README.md
+```
+
+## ⚙️ Local Installation
+
+### Prerequisites
+
+Ensure the following are installed:
+
+- Python 3.11 or later
+- Node.js and npm
+- Git
+
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/akshitagarg19/HireSwift.git
 cd HireSwift
-npm --prefix frontend install
-node frontend/tools/stub-server.mjs &
-npm --prefix frontend run dev
-```
-Open **[http://localhost:5173](http://localhost:5173)** in your browser.
-
----
-
-## 🏛️ System Architecture
-
-```mermaid
-flowchart TD
-    subgraph Browser ["Client Frontend (React 18 + TypeScript)"]
-        UI["Tailwind CSS + UI Components"]
-        State["Zustand Store (UI State & Selections)"]
-        Router["React Router v6"]
-        APIClient["API Client Layer (frontend/src/api/client.ts)"]
-        UI --> State
-        UI --> Router
-        State --> APIClient
-    end
-
-    subgraph Container ["Single Service / Deployment"]
-        FastAPI["FastAPI Backend (Python 3.11+)"]
-        StaticServe["StaticFiles Mount (dist/)"]
-        APIRouter["API Routers (Contract: API.md)"]
-        DB[(Database)]
-        Parser["Resume Parser (PDF/DOCX Extraction)"]
-
-        FastAPI --> APIRouter
-        FastAPI --> StaticServe
-        APIRouter --> DB
-        APIRouter --> Parser
-    end
-
-    APIClient -- "REST / JSON API Calls (/api/...)" --> APIRouter
-    Browser -- "HTTP GET /assets/* & /" --> StaticServe
 ```
 
-### FastAPI Static Serving & SPA Fallback
-In production, HireSwift is served directly by FastAPI:
+### 2. Backend Setup
 
-- **Vite Base URL**: Configured with `base: '/'`. All static assets are emitted to `dist/assets/...`.
-- **Client-Side Routing Fallback**: Single Page Applications (SPA) with deep links (e.g. `/app/pipeline`, `/app/candidates`) require the backend server to return `index.html` for any unmatched HTTP `GET` request.
-- **FastAPI Catch-all**: Must be registered **AFTER** the `/api` router and strictly exclude paths that start with `/api` so API 404s return JSON errors rather than HTML.
-
-Example FastAPI implementation:
-```python
-from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-import os
-
-app = FastAPI(title="HireSwift API")
-
-# 1. Register API router FIRST
-app.include_router(api_router, prefix="/api")
-
-# 2. Mount built static assets from frontend
-app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
-
-# 3. SPA catch-all registered AFTER /api router, strictly excluding paths starting with /api
-@app.get("/{full_path:path}")
-async def serve_spa(full_path: str):
-    if full_path.startswith("api"):
-        raise HTTPException(status_code=404, detail="API route not found")
-    file_path = os.path.join("frontend/dist", full_path)
-    if os.path.exists(file_path) and os.path.isfile(file_path):
-        return FileResponse(file_path)
-    return FileResponse("frontend/dist/index.html")
-```
-
----
-
-## ✨ Feature Matrix: Must-Haves & Bonus Superpowers
-
-### Must-Have Capabilities
-- **Recruiter Dashboard**: High-velocity landing screen (`/app/dashboard`) featuring debounced candidate search (300 ms), 4 live KPIs (Total Candidates, Active Openings, In Pipeline, Shortlisted), Top 10 candidate ranking table with direct 2–3 compare actions, pipeline conversion funnel, and AI skill-gap alert card.
-- **Bulk Resume Upload & Parsing**: Drag-and-drop ingestion of `.pdf` and `.docx` files with client-side validation (10MB limit), job requisition association (`job_id`), real-time progress polling, scrollable per-file failure reporting with clear error reasons, and a "View candidates" CTA.
-- **Explainable JD Match Scoring**: Transparent scoring against custom weights (Skills, Experience, Education, Semantic Similarity) with matched (green `✓`), missing (red `✕`) breakdown popovers, domain learn hints (`frontend/src/lib/skillHints.ts`), and yellow `<mark>` highlighted skill matches in raw resume text. Missing scores render as `-` with empty score rings.
-- **Tri-State Skill Chips**: Per-chip filter toggling between **AND** (must have, emerald), **OR** (nice to have, indigo), and **NOT** (exclude, rose) synchronized with URL search params.
-- **Candidate Drawer with Edit Mode**: Slide-over quick preview drawer allowing recruiters to inspect and edit candidate fields in real time with instant re-ranking and unknown metric resilience (`-` with amber low-confidence badge).
-- **5-Stage Kanban Pipeline**: `Applied` ↔ `Shortlisted` ↔ `Interview` → `Offer` / `Rejected` with transition validation (e.g. 400 on invalid transitions with server detail toasts), card snap-back, and 50-card column pagination (`Show more (+50)`).
-- **Side-by-Side Compare**: Strictly enforced 2-to-3 candidate comparison with category winner highlights, "Suggested from scores" AI recommendations, and candidate skill gap vs job matrix.
-
-### 🌟 Bonus Features
-- **Bulk Email to Shortlisted Candidates**: 1-click candidate communication (`/app/emails`) with template variable interpolation (`{{candidate_name}}`, `{{job_title}}`), live preview, confirmation modal, and zero-dependency manual fallback actions (Copy Emails, Launch Mail Client with <=40 BCC chunking, Export CSV).
-- **Automated Duplicate Detection & Merging**: Grouping by `duplicate_group_id` from API (signals: exact copy, same email other format, fuzzy name same phone, updated resume) with side-by-side diff viewer and 1-click merge.
-- **Skill-Gap Analytics**: Interactive charts showing missing skill frequency across applicant pools and conversion funnels directly from `GET /jobs/{id}/skill-gap` and `GET /applications`.
-- **UI Scalability (1,000+ Candidates)**: Server-side page size selector (`12`, `25`, `50`, `100`), debounced requests with ID tracking guards, 50-card Kanban pagination, and synthetic scale indicators.
-- **Blind Recruitment Mode**: Top-bar toggle masking candidate name, college, and location across Dashboard, Candidates Directory, Candidate Drawer, Pipeline Kanban, Jobs Ranking, and Compare view.
-
----
-
-## 📸 Application Screenshots
-
-Captured at 1366x768 resolution from the live application suite:
-
-| Screen | View Name | File Location | Key Capabilities Shown |
-|---|---|---|---|
-| **01** | **Recruiter Dashboard** | `docs/screens/01-dashboard.png` | Global search, live KPIs, Top 10 ranking table, pipeline funnel, skill gap |
-| **02** | **Bulk Resume Upload** | `docs/screens/02-upload.png` | Job linkage, drag-and-drop batch upload, progress tracking, failure isolation |
-| **03** | **Candidates Directory** | `docs/screens/03-candidates.png` | Tri-state skill filters (AND/OR/NOT), server pagination (12/25/50/100), blind mode |
-| **04** | **Job Detail & Ranking** | `docs/screens/04-job-ranking.png` | Ranked candidates by match score, competency breakdown, skill-gap analysis |
-| **05** | **5-Stage Kanban Pipeline** | `docs/screens/05-pipeline.png` | Drag-and-drop stages, embedded candidate summary cards, transition guardrails |
-| **06** | **Side-by-Side Compare** | `docs/screens/06-compare.png` | Strict 2–3 compare, category winner badges, AI match rationale, skill-gap matrix |
-| **07** | **Insights & Analytics** | `docs/screens/07-insights.png` | Conversion funnel, talent pool gap analysis, CSV export, print view |
-| **08** | **Duplicate Resolution** | `docs/screens/08-duplicates.png` | Cluster signals, side-by-side diff viewer, 1-click merge into primary |
-| **09** | **Bulk Email Outreach** | `docs/screens/09-emails.png` | Shortlist filtering, variable interpolation, live preview, mailto fallback |
-
----
-
-## ⚡ Setup & Execution Modes
-
-HireSwift can be executed in three distinct modes depending on your development and evaluation goals:
-
-### Mode 1: Frontend Alone (In-Browser Mock Mode)
-Run the frontend standalone with in-browser mock APIs and local simulated data:
-```bash
-npm --prefix frontend install
-VITE_USE_MOCK=true npm --prefix frontend run dev
-```
-Open [http://localhost:5173](http://localhost:5173) in your browser.
-
-### Mode 2: Frontend with Contract Stub Server (Contract Verification)
-The repository includes a standalone stub server (`frontend/tools/stub-server.mjs`) serving benchmark data from `test-data/` to test live-mode UI rendering and API contracts without requiring Python dependencies:
-```bash
-# 1. Start the stub server (runs on port 8000)
-node frontend/tools/stub-server.mjs
-
-# 2. In another terminal, start the frontend in live mode (proxies /api -> 8000)
-VITE_USE_MOCK=false npm --prefix frontend run dev
-```
-
-### Mode 3: Frontend with Real Backend (FastAPI Production Mode)
-Run against the full Python/FastAPI backend:
-```bash
-# 1. Start Akshita's FastAPI backend (port 8000)
-uvicorn main:app --port 8000 --reload
-
-# 2. Start the frontend (or serve frontend/dist via FastAPI StaticFiles)
-VITE_USE_MOCK=false npm --prefix frontend run dev
-```
-
----
-
-## 🛠️ Verification & Quality Assurance Suite
-
-HireSwift includes a comprehensive QA automation harness and ground-truth benchmark suite:
-
-### Stub Mode vs. Live Mode QA Evaluation:
-- **Stub Mode (`QA_MODE=stub`)**: Serves pre-curated ground truth from `test-data/answer_key.csv`. Strictly validates frontend UI rendering, navigation routes, API parameter schemas, empty/error state handling, and contract conformance. It does NOT evaluate backend parser accuracy or database filter latency.
-- **Live Mode (`QA_MODE=live`)**: Connects to the real FastAPI backend. Evaluates actual PDF/DOCX parser extraction accuracy, OCR quality, live database filter query latency, MinHash/clustering deduplication, and model ranking consistency against the ground-truth benchmark.
-
-### When the backend is ready
-Run the live smoke check and live QA harness with one command:
+Navigate to the backend directory:
 
 ```bash
-# 1. Quick Live Smoke Check (validates /health, /candidates?page_size=1, /jobs, /applications)
-QA_BASE_URL=https://<backend-url>/api npm run qa:smoke
-
-# 2. Complete Live Ground-Truth QA Harness (Parser, Filters, Ranking, Deduplication)
-QA_BASE_URL=https://<backend-url>/api npm run qa:live
+cd backend
 ```
 
-> **Note**: Both commands require `QA_BASE_URL` in the environment. Running them without `QA_BASE_URL` prints a clear error message with usage instructions instead of crashing.
-
-### 1. Automated Ground-Truth QA Harness (`qa/run.mjs`)
-Validates all 6 core recruiting engines (Resume Upload & Edge Cases, Parser Accuracy, 14 Filter Tests F01–F14, JD Parsing & Top-15 Ranking, Deduplication Recall & Precision, Pipeline Transitions & Compare Limits).
+Create a virtual environment:
 
 ```bash
-# Run QA harness against local Stub Server (default)
-npm --prefix frontend run qa
-# Or explicitly:
-QA_MODE=stub npm --prefix frontend run qa
-
-# Run QA harness against real Live Backend
-QA_MODE=live QA_BASE_URL=https://<backend-url>/api npm --prefix frontend run qa
+python -m venv .venv
 ```
 
-This generates `QA_REPORT.md` and `qa/results.json` detailing phase-by-phase test passes, latency metrics, and verification logs.
+Activate it on Windows:
 
-### 2. Standard Quality Checks & E2E Tests
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+Install dependencies:
+
 ```bash
-# Type check and lint (0 errors)
-npm --prefix frontend run lint
-
-# Production bundle build
-npm --prefix frontend run build
-
-# Unit tests (Vitest)
-npm --prefix frontend run test
-
-# End-to-end regression tests (Playwright)
-npm --prefix frontend run test:e2e
-
-# Dedicated Ground-Truth UI Verification (Phase 7 Playwright tests)
-npm --prefix frontend run qa:e2e
+pip install -r requirements.txt
 ```
 
----
+Start the FastAPI server:
 
-## 📁 Ground-Truth Test Dataset (`test-data/`)
+```bash
+python -m uvicorn app.main:app --reload
+```
 
-Located in `test-data/`:
-- `test-data/resumes/`: **56 resume files** (.pdf and .docx) representing 50 unique candidate profiles plus 6 duplicate test variations (file-hash exact copy, same email different format, fuzzy name same phone, updated resume version, initials name variant).
-- `test-data/edge_cases/`: `corrupt_resume.pdf`, `zero_byte.pdf`, `notes.txt` to test client/server failure rejection.
-- `test-data/jds/`: **5 job descriptions** (`full-stack-engineer.md`, `python-data-engineer.md`, `frontend-react-lead.md`, `campus-graduate-trainee.md`, `senior-backend-engineer.md`).
-- `test-data/answer_key.csv`: Field-level ground truth across all 56 resumes.
-- `test-data/jd_answer_key.csv`: Target parsed competencies, requirements, and `hard_filter_pass_candidate_ids`.
-- `test-data/filter_tests.csv`: 14 known-answer candidate filter queries (F01–F14).
+The backend will be available at:
 
----
+```text
+http://127.0.0.1:8000
+```
 
-## 📊 Benchmark & Accuracy Metrics
+API documentation:
 
-| Metric Category | Stub / Contract Status | Live Backend Benchmark (`qa/results-live.json`) |
+```text
+http://127.0.0.1:8000/docs
+```
+
+### 3. Frontend Setup
+
+Open another terminal:
+
+```bash
+cd frontend
+npm install
+```
+
+Create a `.env` file inside `frontend/`:
+
+```env
+VITE_API_URL=/api
+VITE_USE_MOCK=false
+```
+
+Start the development server:
+
+```bash
+npm run dev
+```
+
+Open:
+
+```text
+http://localhost:5173
+```
+
+The Vite development proxy forwards `/api` requests to the locally running FastAPI server.
+
+## 🔌 Backend API Endpoints
+
+### System
+
+| Method | Endpoint | Description |
 |---|---|---|
-| **Known-Answer Filters (F01–F14)** | **14 / 14 Passed (100%)** | *run live QA first (`QA_MODE=live QA_BASE_URL=<url> npm run qa`)* |
-| **Top 10 Field Extraction Accuracy** | Pre-curated ground truth | *run live QA first* |
-| **Deduplication Cluster Signals** | **6 / 6 Pairs Flagged** | *run live QA first* |
-| **Pipeline Transition Guardrails** | **100% Contract Validated** | *run live QA first* |
-| **Filter Query Latency (p50 / p95)** | In-memory (< 10 ms) | *run live QA first* |
-| **Frontend Render Performance** | **< 250 ms (1,000 synthetic pool)** | Validated across 60 Playwright tests |
+| GET | `/health` | Backend health check |
+
+### Resume Management
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/resumes/bulk` | Upload and process resumes |
+| GET | `/batches/{batch_id}/progress` | Check processing progress |
+
+### Candidates
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/candidates` | List and filter candidates |
+| GET | `/candidates/{candidate_id}` | Get candidate details |
+| PATCH | `/candidates/{candidate_id}` | Update candidate |
+
+### Jobs
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/jobs` | Create job |
+| PATCH | `/jobs/{job_id}` | Update job |
+| GET | `/jobs/{job_id}/ranking` | Candidate ranking |
+| GET | `/jobs/{job_id}/skill-gap` | Skill-gap analysis |
+
+### Applications
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/applications` | Apply for a job |
+| GET | `/applications` | List applications |
+| POST | `/applications/{application_id}/move` | Move application stage |
+| GET | `/applications/{application_id}/history` | Application history |
+
+### Comparison
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/compare` | Compare candidates |
+
+For the current complete API specification, refer to `API.md` and the live Swagger documentation.
+
+## 🧪 Testing and Verification
+
+### Backend Tests
+
+Run:
+
+```bash
+cd backend
+python -m pytest -q
+```
+
+**Latest local result: 7 tests passed.**
+
+### Frontend Tests
+
+From the frontend directory:
+
+```bash
+npm run build
+npm run test
+npm run test:e2e
+```
+
+The frontend development PR reported:
+- TypeScript/lint checks: Passed
+- Production build: Passed
+- Vitest: 15/15 passed
+- Playwright: 10/10 passed
+
+These are reported frontend PR results, not a new verification of the deployed production application.
+
+### Live Integration Verification
+
+| Feature | Verification |
+|---|---|
+| Backend health endpoint | Passed |
+| Vercel-to-Render connection | Passed |
+| Candidate directory | Passed |
+| Job listing | Passed |
+| Job creation | Passed |
+| Job visible after browser refresh | Passed |
+| Resume upload and parsing | Passed |
+| Uploaded candidate visible in directory | Passed |
+| Ranking page loads | Passed |
+| Ranking score calculation | Not fully verified |
+| Pipeline transitions | Not fully verified |
+| Candidate comparison | Not fully verified |
+
+## ☁️ Deployment Architecture
+
+```text
+User Browser
+     |
+     v
+Vercel — React + Vite Frontend
+     |
+     | /api requests
+     v
+Vercel API Rewrite
+     |
+     v
+Render — FastAPI Backend
+     |
+     v
+SQLite Database
+```
+
+### Frontend Deployment
+
+Platform: **Vercel**
+
+Production URL:
+
+https://hire-swift.vercel.app/
+
+Configuration:
+
+```env
+VITE_API_URL=/api
+VITE_USE_MOCK=false
+```
+
+The Vercel rewrite configuration forwards API requests to the Render backend.
+
+### Backend Deployment
+
+Platform: **Render**
+
+Production URL:
+
+https://hireswift-2sk5.onrender.com/
+
+Build command:
+
+```bash
+pip install -r requirements.txt
+```
+
+Start command:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+### Database Persistence Limitation
+
+The current backend uses SQLite on Render.
+
+Render's free service filesystem is ephemeral. Database records and uploaded files stored locally may be lost when the service restarts or redeploys.
+
+For production usage, a persistent database such as managed PostgreSQL is recommended.
+
+## 🎯 Demonstration Workflow
+
+1. Open the deployed HireSwift website.
+2. Navigate to **Upload**.
+3. Upload a sample PDF or DOCX resume.
+4. Start resume parsing.
+5. Open **Candidates** to inspect the extracted candidate profile.
+6. Navigate to **Jobs**.
+7. Create a job with relevant requirements.
+8. Open the job's ranking section to inspect candidate matching.
+9. Explore the recruitment pipeline and comparison interfaces.
+
+## 🔮 Future Improvements
+
+- Managed PostgreSQL database for persistent storage.
+- More accurate resume extraction.
+- Improved skill-based ranking.
+- Enhanced recruitment analytics.
+- Production-ready authentication and authorization.
+- Expanded automated end-to-end testing.
+- Email service integration.
+
+## 👥 Development
+
+HireSwift was developed collaboratively, with separate frontend and backend contributions integrated into a single repository.
+
+## 📄 Project Links
+
+**Live Application:** https://hire-swift.vercel.app/
+
+**GitHub:** https://github.com/akshitagarg19/HireSwift
+
+**Backend Documentation:** https://hireswift-2sk5.onrender.com/docs
 
 ---
 
-## ⚠️ Known Limitations
-
-1. **Stub Server Fixture**: The local contract stub (`frontend/tools/stub-server.mjs`) is an in-memory fixture derived from `test-data/answer_key.csv`. It validates API contract compatibility, request schemas, and UI state resilience, but does not benchmark OCR accuracy or SQLite disk seek latency.
-2. **Backend Engine Dependency**: High-volume parsing, semantic vector embeddings, and fuzzy MinHash deduplication require connecting to Akshita's FastAPI service.
-3. **Mail Client BCC Chunking**: When launching local mail clients via `mailto:`, recipient lists are automatically chunked into batches of $\le 40$ emails to avoid OS command-line URI length restrictions.
-
----
-
-## 🛡️ License
-Built for fast-growing hiring teams. Licensed under MIT.
+**HireSwift — Simplifying recruitment through intelligent candidate management.**

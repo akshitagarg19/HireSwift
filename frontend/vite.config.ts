@@ -1,9 +1,9 @@
+
 /// <reference types="vitest" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-// https://vitejs.dev/config/
 export default defineConfig({
   base: '/',
   plugins: [react()],
@@ -16,10 +16,11 @@ export default defineConfig({
     port: 5173,
     host: true,
     proxy: {
-  '/api': {
-    target: 'http://127.0.0.1:8000',
-    changeOrigin: true,
-    rewrite: (path) => path.replace(/^\/api/, ''),
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
     },
   },
   build: {
@@ -29,7 +30,11 @@ export default defineConfig({
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
           'vendor-charts': ['recharts'],
-          'vendor-dnd': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities'],
+          'vendor-dnd': [
+            '@dnd-kit/core',
+            '@dnd-kit/sortable',
+            '@dnd-kit/utilities',
+          ],
         },
       },
     },

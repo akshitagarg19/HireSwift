@@ -33,10 +33,43 @@ class ApplyIn(BaseModel):
 @app.get('/health')
 def health(): return {'status':'ok'}
 
-def candidate_dict(con,row):
-    d=dict(row)
-    d['skills']=[r['skill'] for r in con.execute('SELECT skill FROM candidate_skills WHERE candidate_id=?',(d['id'],))]
-    return d
+
+def candidate_dict(con, row):
+    d = dict(row)
+
+    skills = [
+        r["skill"]
+        for r in con.execute(
+            "SELECT skill FROM candidate_skills WHERE candidate_id=?",
+            (d["id"],)
+        )
+    ]
+
+    return {
+        "id": str(d["id"]),
+        "name": d.get("name") or "Unknown Candidate",
+        "email": d.get("email") or "",
+        "phone": d.get("phone") or "",
+        "location": d.get("city") or "",
+        "college": "",
+        "degree": "",
+        "branch": "",
+        "grad_year": d.get("grad_year"),
+        "tenth_percent": d.get("tenth_pct"),
+        "twelfth_percent": d.get("twelfth_pct"),
+        "cgpa": d.get("cgpa_10"),
+        "skills": skills,
+        "experience_years": (
+            round(d["experience_months"] / 12, 2)
+            if d.get("experience_months") is not None
+            else None
+        ),
+        "resume_text": d.get("raw_text") or "",
+        "resume_file_name": d.get("source_filename") or "",
+        "parse_confidence": None,
+        "source": "Upload"
+    }
+
 
 def save_resume(item):
     filename,data=item

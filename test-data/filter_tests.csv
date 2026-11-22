@@ -1,0 +1,15 @@
+test_id,description,api_params,expected_count,expected_candidate_ids
+F01,CGPA >= 8.0 (unknown CGPA excluded),cgpa_min=8.0,30,C000|C001|C003|C005|C011|C012|C015|C016|C018|C019|C020|C021|C023|C025|C027|C030|C031|C032|C033|C034|C036|C038|C041|C042|C043|C044|C045|C046|C047|C049
+F02,CGPA >= 8.0 with include_unknown,cgpa_min=8.0&include_unknown=true,33,C000|C001|C003|C004|C005|C011|C012|C015|C016|C017|C018|C019|C020|C021|C023|C025|C027|C028|C030|C031|C032|C033|C034|C036|C038|C041|C042|C043|C044|C045|C046|C047|C049
+F03,10th >= 90 and 12th >= 85,tenth_min=90&twelfth_min=85,9,C003|C004|C006|C014|C024|C031|C033|C039|C040
+F04,skills_all Python AND SQL,"skills_all=Python,SQL",26,C001|C002|C003|C005|C006|C010|C012|C013|C014|C015|C017|C021|C022|C024|C025|C026|C027|C030|C033|C036|C038|C039|C044|C047|C048|C049
+F05,skills_any React OR Angular OR Vue.js,"skills_any=React,Angular,Vue.js",17,C000|C001|C004|C007|C008|C011|C013|C016|C018|C021|C024|C030|C031|C043|C045|C046|C047
+F06,"skills_all Python, skills_none Java",skills_all=Python&skills_none=Java,25,C001|C002|C003|C006|C010|C012|C014|C015|C017|C020|C021|C022|C024|C025|C026|C027|C030|C033|C035|C036|C037|C039|C044|C048|C049
+F07,Experience 2 to 5 years,exp_min=2&exp_max=5,17,C000|C002|C003|C007|C008|C022|C023|C024|C029|C031|C034|C036|C037|C039|C042|C043|C046
+F08,City Bengaluru (Bangalore alias),city=Bengaluru,13,C002|C007|C012|C014|C017|C023|C027|C028|C035|C036|C038|C045|C049
+F09,"Demo query: Noida, Python, CGPA >= 7.5, 2+ years",city=Noida&skills_all=Python&cgpa_min=7.5&exp_min=2,5,C003|C010|C015|C024|C033
+F10,Graduation year 2021 with Docker or Kubernetes,"grad_year=2021&skills_any=Docker,Kubernetes",4,C009|C011|C017|C035
+F11,React AND JavaScript with 1+ year,"skills_all=React,JavaScript&exp_min=1",8,C000|C007|C011|C013|C016|C024|C045|C047
+F12,Freshers (0 months) with CGPA >= 7,exp_max=0&cgpa_min=7.0,3,C001|C005|C041
+F13,Text search 'IIT',q=IIT,8,C006|C009|C010|C011|C014|C023|C038|C044
+F14,Gurugram (Gurgaon alias),city=Gurugram,3,C005|C008|C048

@@ -1,0 +1,379 @@
+{
+  "timestamp": "2026-11-21T06:49:22.436Z",
+  "qa_mode": "stub",
+  "base_url": "http://127.0.0.1:8000/api",
+  "summary": {
+    "total_phases": 6,
+    "phases_run": 0,
+    "passed_phases": 0,
+    "failed_phases": 0
+  },
+  "phase1_upload": {
+    "passed": true,
+    "duration_ms": 605,
+    "total_files": 59,
+    "processed_resumes": 56,
+    "failed_files": [
+      {
+        "filename": "corrupt_resume.pdf",
+        "reason": "Corrupted PDF header or unreadable scanned image"
+      },
+      {
+        "filename": "zero_byte.pdf",
+        "reason": "Empty or 0-byte file"
+      },
+      {
+        "filename": "notes.txt",
+        "reason": "Unsupported file extension .txt: Only .pdf and .docx files are accepted."
+      }
+    ],
+    "checks": {
+      "corrupt_resume_failed": true,
+      "zero_byte_failed": true,
+      "notes_txt_rejected": true
+    }
+  },
+  "phase2_parser": {
+    "skipped": true,
+    "reason": "Stub server does not contain a parser engine; candidates are pre-structured ground truth."
+  },
+  "phase3_filters": {
+    "passed": true,
+    "total_tests": 14,
+    "passed_tests": 14,
+    "tests": [
+      {
+        "test_id": "F01",
+        "description": "CGPA >= 8.0 (unknown CGPA excluded)",
+        "api_params": "cgpa_min=8.0",
+        "expected_count": 30,
+        "actual_count": 30,
+        "passed": true,
+        "missing": [],
+        "extra": [],
+        "latency_p50_ms": 4.6,
+        "latency_p95_ms": 8.4
+      },
+      {
+        "test_id": "F02",
+        "description": "CGPA >= 8.0 with include_unknown",
+        "api_params": "cgpa_min=8.0&include_unknown=true",
+        "expected_count": 33,
+        "actual_count": 33,
+        "passed": true,
+        "missing": [],
+        "extra": [],
+        "latency_p50_ms": 4.7,
+        "latency_p95_ms": 5.5
+      },
+      {
+        "test_id": "F03",
+        "description": "10th >= 90 and 12th >= 85",
+        "api_params": "tenth_min=90&twelfth_min=85",
+        "expected_count": 9,
+        "actual_count": 9,
+        "passed": true,
+        "missing": [],
+        "extra": [],
+        "latency_p50_ms": 2.3,
+        "latency_p95_ms": 3.7
+      },
+      {
+        "test_id": "F04",
+        "description": "skills_all Python AND SQL",
+        "api_params": "skills_all=Python,SQL",
+        "expected_count": 26,
+        "actual_count": 26,
+        "passed": true,
+        "missing": [],
+        "extra": [],
+        "latency_p50_ms": 3.1,
+        "latency_p95_ms": 5.2
+      },
+      {
+        "test_id": "F05",
+        "description": "skills_any React OR Angular OR Vue.js",
+        "api_params": "skills_any=React,Angular,Vue.js",
+        "expected_count": 17,
+        "actual_count": 17,
+        "passed": true,
+        "missing": [],
+        "extra": [],
+        "latency_p50_ms": 3.3,
+        "latency_p95_ms": 3.7
+      },
+      {
+        "test_id": "F06",
+        "description": "skills_all Python, skills_none Java",
+        "api_params": "skills_all=Python&skills_none=Java",
+        "expected_count": 25,
+        "actual_count": 25,
+        "passed": true,
+        "missing": [],
+        "extra": [],
+        "latency_p50_ms": 3.6,
+        "latency_p95_ms": 4
+      },
+      {
+        "test_id": "F07",
+        "description": "Experience 2 to 5 years",
+        "api_params": "exp_min=2&exp_max=5",
+        "expected_count": 17,
+        "actual_count": 17,
+        "passed": true,
+        "missing": [],
+        "extra": [],
+        "latency_p50_ms": 3,
+        "latency_p95_ms": 3.7
+      },
+      {
+        "test_id": "F08",
+        "description": "City Bengaluru (Bangalore alias)",
+        "api_params": "city=Bengaluru",
+        "expected_count": 13,
+        "actual_count": 13,
+        "passed": true,
+        "missing": [],
+        "extra": [],
+        "latency_p50_ms": 3.4,
+        "latency_p95_ms": 3.7
+      },
+      {
+        "test_id": "F09",
+        "description": "Demo query: Noida, Python, CGPA >= 7.5, 2+ years",
+        "api_params": "city=Noida&skills_all=Python&cgpa_min=7.5&exp_min=2",
+        "expected_count": 5,
+        "actual_count": 5,
+        "passed": true,
+        "missing": [],
+        "extra": [],
+        "latency_p50_ms": 1.9,
+        "latency_p95_ms": 3.9
+      },
+      {
+        "test_id": "F10",
+        "description": "Graduation year 2021 with Docker or Kubernetes",
+        "api_params": "grad_year=2021&skills_any=Docker,Kubernetes",
+        "expected_count": 4,
+        "actual_count": 4,
+        "passed": true,
+        "missing": [],
+        "extra": [],
+        "latency_p50_ms": 2.2,
+        "latency_p95_ms": 2.7
+      },
+      {
+        "test_id": "F11",
+        "description": "React AND JavaScript with 1+ year",
+        "api_params": "skills_all=React,JavaScript&exp_min=1",
+        "expected_count": 8,
+        "actual_count": 8,
+        "passed": true,
+        "missing": [],
+        "extra": [],
+        "latency_p50_ms": 1.9,
+        "latency_p95_ms": 2.1
+      },
+      {
+        "test_id": "F12",
+        "description": "Freshers (0 months) with CGPA >= 7",
+        "api_params": "exp_max=0&cgpa_min=7.0",
+        "expected_count": 3,
+        "actual_count": 3,
+        "passed": true,
+        "missing": [],
+        "extra": [],
+        "latency_p50_ms": 1.8,
+        "latency_p95_ms": 3.3
+      },
+      {
+        "test_id": "F13",
+        "description": "Text search 'IIT'",
+        "api_params": "q=IIT",
+        "expected_count": 8,
+        "actual_count": 8,
+        "passed": true,
+        "missing": [],
+        "extra": [],
+        "latency_p50_ms": 2.5,
+        "latency_p95_ms": 2.9
+      },
+      {
+        "test_id": "F14",
+        "description": "Gurugram (Gurgaon alias)",
+        "api_params": "city=Gurugram",
+        "expected_count": 3,
+        "actual_count": 3,
+        "passed": true,
+        "missing": [],
+        "extra": [],
+        "latency_p50_ms": 2,
+        "latency_p95_ms": 2
+      }
+    ]
+  },
+  "phase4_jd_ranking": {
+    "passed": true,
+    "jds": [
+      {
+        "jd_file": "full-stack-engineer.md",
+        "title": "Full Stack Engineer",
+        "expected_pass_count": 5,
+        "missing_from_top15": [],
+        "is_sorted_desc": true,
+        "min_pass_score": 89,
+        "max_fail_score": 38,
+        "passed": true
+      },
+      {
+        "jd_file": "python-data-engineer.md",
+        "title": "Python Data Engineer",
+        "expected_pass_count": 4,
+        "missing_from_top15": [],
+        "is_sorted_desc": true,
+        "min_pass_score": 91,
+        "max_fail_score": 42,
+        "passed": true
+      },
+      {
+        "jd_file": "frontend-react-lead.md",
+        "title": "Frontend React Lead",
+        "expected_pass_count": 1,
+        "missing_from_top15": [],
+        "is_sorted_desc": true,
+        "min_pass_score": 96,
+        "max_fail_score": 42,
+        "passed": true
+      },
+      {
+        "jd_file": "campus-graduate-trainee.md",
+        "title": "Campus Graduate Trainee (2025/2026 batch)",
+        "expected_pass_count": 10,
+        "missing_from_top15": [],
+        "is_sorted_desc": true,
+        "min_pass_score": 85,
+        "max_fail_score": 49,
+        "passed": true
+      },
+      {
+        "jd_file": "senior-backend-engineer.md",
+        "title": "Senior Backend Engineer",
+        "expected_pass_count": 3,
+        "missing_from_top15": [],
+        "is_sorted_desc": true,
+        "min_pass_score": 92,
+        "max_fail_score": 42,
+        "passed": true
+      }
+    ],
+    "hand_verified_scores": [
+      {
+        "candidate_id": "C007",
+        "job_title": "Full Stack Engineer",
+        "match_score": 96,
+        "breakdown": {
+          "skills": 98,
+          "experience": 95,
+          "education": 94,
+          "semantic": 92
+        },
+        "recomputed": 96,
+        "matches": true
+      },
+      {
+        "candidate_id": "C011",
+        "job_title": "Full Stack Engineer",
+        "match_score": 94,
+        "breakdown": {
+          "skills": 96,
+          "experience": 93,
+          "education": 93,
+          "semantic": 91
+        },
+        "recomputed": 94,
+        "matches": true
+      },
+      {
+        "candidate_id": "C016",
+        "job_title": "Full Stack Engineer",
+        "match_score": 92,
+        "breakdown": {
+          "skills": 94,
+          "experience": 91,
+          "education": 92,
+          "semantic": 90
+        },
+        "recomputed": 92,
+        "matches": true
+      }
+    ]
+  },
+  "phase5_duplicates": {
+    "passed": true,
+    "total_duplicates_expected": 6,
+    "duplicates_detected": 6,
+    "false_positives": 0,
+    "checks": [
+      {
+        "file": "Resume_final_v2 (1).pdf",
+        "dup_of": "Nandini Rao - CV.pdf",
+        "dup_type": "exact_copy",
+        "detected": true,
+        "duplicate_group_id": "dup-grp-C005"
+      },
+      {
+        "file": "my_cv_latest.pdf",
+        "dup_of": "Resume_Kaur_Tanmay.pdf",
+        "dup_type": "exact_copy",
+        "detected": true,
+        "duplicate_group_id": "dup-grp-C014"
+      },
+      {
+        "file": "Swati_Das_CV_word.docx",
+        "dup_of": "Swati_Das_Resume.pdf",
+        "dup_type": "same_email_other_format",
+        "detected": true,
+        "duplicate_group_id": "dup-grp-C012"
+      },
+      {
+        "file": "Kartik_Sundaram_Resume.pdf",
+        "dup_of": "KarthikSundaram_2020.pdf",
+        "dup_type": "fuzzy_name_same_phone",
+        "detected": true,
+        "duplicate_group_id": "dup-grp-C019"
+      },
+      {
+        "file": "Divya_Verma_Resume_2026_updated.pdf",
+        "dup_of": "Resume_Verma_Divya.pdf",
+        "dup_type": "same_email_updated_resume",
+        "detected": true,
+        "duplicate_group_id": "dup-grp-C018"
+      },
+      {
+        "file": "S_Menon_CV.pdf",
+        "dup_of": "SiddharthMenon_2023.docx",
+        "dup_type": "initials_same_phone",
+        "detected": true,
+        "duplicate_group_id": "dup-grp-C007"
+      }
+    ]
+  },
+  "phase6_pipeline_compare": {
+    "passed": true,
+    "pipeline": {
+      "valid_move_passed": true,
+      "invalid_move_blocked": true
+    },
+    "compare": {
+      "compare_2_ok": true,
+      "compare_3_ok": true,
+      "compare_1_rejected_400": true,
+      "compare_4_rejected_400": true
+    }
+  },
+  "bugs": {
+    "frontend_fixed": [],
+    "backend_contract_issues": [],
+    "data_key_issues": []
+  }
+}
